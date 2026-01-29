@@ -1,0 +1,32 @@
+# Airgapper Simple Example
+# Single-node setup for testing
+#
+# Usage:
+#   1. docker-compose -f examples/docker-compose.example.yml up -d
+#   2. docker exec -it airgapper airgapper init --name test --repo rest:http://storage:8000/backup
+#   3. docker exec -it airgapper airgapper backup /data
+
+services:
+  # Storage backend
+  storage:
+    image: restic/rest-server:latest
+    command: ["--append-only", "--no-auth"]
+    volumes:
+      - ./restic-data:/data
+    ports:
+      - "8000:8000"
+
+  # Airgapper agent
+  airgapper:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    volumes:
+      - ./airgapper-config:/home/airgapper/.airgapper
+      - ./backup-data:/data
+    ports:
+      - "8080:8080"
+    depends_on:
+      - storage
+    # Start the API server
+    command: ["serve", "--addr", ":8080"]

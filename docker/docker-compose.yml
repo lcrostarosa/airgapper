@@ -1,0 +1,60 @@
+# Airgapper Full Stack Demo
+# This docker-compose sets up a complete test environment:
+# - restic-rest-server (append-only storage)
+# - alice (data owner)
+# - bob (backup host)
+
+services:
+  # Restic REST Server - append-only storage
+  restic-rest-server:
+    image: restic/rest-server:latest
+    container_name: restic-rest-server
+    command: ["--append-only", "--no-auth"]
+    volumes:
+      - restic-data:/data
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  # Alice - Data Owner
+  # Initializes the backup repo and creates backups
+  alice:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: airgapper-alice
+    volumes:
+      - alice-config:/home/airgapper/.airgapper
+      - alice-data:/data
+    ports:
+      - "8081:8080"
+    environment:
+      - AIRGAPPER_NAME=alice
+    depends_on:
+      - restic-rest-server
+    command: ["serve", "--addr", ":8080"]
+    restart: unless-stopped
+
+  # Bob - Backup Host
+  # Holds key share and approves restore requests
+  bob:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: airgapper-bob
+    volumes:
+      - bob-config:/home/airgapper/.airgapper
+    ports:
+      - "8082:8080"
+    environment:
+      - AIRGAPPER_NAME=bob
+    depends_on:
+      - restic-rest-server
+    command: ["serve", "--addr", ":8080"]
+    restart: unless-stopped
+
+volumes:
+  restic-data:
+  alice-config:
+  alice-data:
+  bob-config:
