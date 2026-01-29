@@ -96,7 +96,20 @@ airgapper init --name alice --repo rest:http://bob-nas:8000/alice-backup
 #   Index:   2
 ```
 
-**2. Bob joins (backup host)**
+**2. Alice configures scheduled backups**
+
+```bash
+# Set up daily backups at 2 AM
+airgapper schedule --set daily ~/Documents ~/Pictures
+
+# Or use cron syntax
+airgapper schedule --set "0 3 * * *" ~/Documents  # 3 AM daily
+
+# Or simple intervals
+airgapper schedule --set "every 4h" ~/Documents   # Every 4 hours
+```
+
+**3. Bob joins (backup host)**
 
 ```bash
 # Bob receives Alice's share and joins
@@ -106,13 +119,17 @@ airgapper join --name bob \
   --index 2
 ```
 
-**3. Alice backs up (daily, no approval needed)**
+**4. Start the server (runs scheduled backups + API)**
 
 ```bash
+# Alice runs the server for scheduled backups
+airgapper serve --addr :8080
+
+# Or run a one-off backup manually
 airgapper backup ~/Documents ~/Pictures
 ```
 
-**4. Alice requests restore (requires Bob's approval)**
+**5. Alice requests restore (requires Bob's approval)**
 
 ```bash
 # Something went wrong, Alice needs her data back
@@ -121,7 +138,7 @@ airgapper request --snapshot latest --reason "laptop crashed"
 # Request ID: abc123...
 ```
 
-**5. Bob approves**
+**6. Bob approves**
 
 ```bash
 # Bob sees the pending request
@@ -131,7 +148,7 @@ airgapper pending
 airgapper approve abc123
 ```
 
-**6. Alice restores**
+**7. Alice restores**
 
 ```bash
 airgapper restore --request abc123 --target ~/restore/
@@ -180,13 +197,47 @@ airgapper restore --request abc123 --target ~/restore/
 | `join` | Join as backup host | Host |
 | `backup` | Create a backup | Owner |
 | `snapshots` | List snapshots | Owner |
+| `schedule` | Configure backup schedule | Owner |
 | `request` | Request restore approval | Owner |
 | `pending` | List pending requests | Both |
 | `approve` | Approve a request | Host |
 | `deny` | Deny a request | Host |
 | `restore` | Restore after approval | Owner |
 | `status` | Show status | Both |
-| `serve` | Run HTTP API server | Both |
+| `serve` | Run HTTP API + scheduled backups | Both |
+
+## Scheduled Backups
+
+Airgapper can run backups on a schedule. Configure once, run as a daemon:
+
+```bash
+# Configure schedule (owner only)
+airgapper schedule --set daily ~/Documents ~/Pictures
+
+# View current schedule
+airgapper schedule --show
+
+# Clear schedule
+airgapper schedule --clear
+```
+
+**Schedule formats:**
+- `daily` - Every day at 2 AM
+- `hourly` - Every hour
+- `weekly` - Every Sunday at 2 AM
+- `every 4h` - Every 4 hours
+- `every 30m` - Every 30 minutes
+- `0 3 * * *` - Cron syntax (3 AM daily)
+- `0 */6 * * *` - Cron syntax (every 6 hours)
+
+**Run as daemon:**
+```bash
+# Start server with scheduled backups
+airgapper serve --addr :8080
+
+# Or override schedule at runtime
+airgapper serve --schedule "every 4h" --paths ~/Documents,~/Pictures
+```
 
 ## HTTP API
 

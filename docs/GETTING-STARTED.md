@@ -160,9 +160,43 @@ Commands available to you:
   airgapper serve    - Run HTTP API for remote management
 ```
 
-## Step 5: Create Backups (Alice)
+## Step 5: Configure Scheduled Backups (Alice)
 
-Now Alice can back up her data:
+Set up automatic backups:
+
+```bash
+# Configure daily backups at 2 AM
+airgapper schedule --set daily ~/Documents ~/Pictures
+
+# Or use more specific schedules
+airgapper schedule --set "0 3 * * *" ~/Documents  # 3 AM daily (cron)
+airgapper schedule --set "every 4h" ~/Documents   # Every 4 hours
+airgapper schedule --set hourly ~/Documents       # Every hour
+
+# View current schedule
+airgapper schedule --show
+```
+
+Output:
+```
+✅ Schedule configured!
+Schedule: daily
+Paths:    /home/alice/Documents, /home/alice/Pictures
+Next run: 2024-01-26 02:00:00 (in 8.5 hours)
+
+To start scheduled backups, run:
+  airgapper serve --addr :8080
+```
+
+**Run as daemon:**
+```bash
+# Start the server (runs scheduled backups + HTTP API)
+airgapper serve --addr :8080
+```
+
+## Step 6: Manual Backups (Alice)
+
+You can also run backups manually:
 
 ```bash
 # Backup specific directories
@@ -191,7 +225,7 @@ snapshot abc12345 saved
 
 **Note:** Backups don't require Bob's approval. Alice has the full password.
 
-## Step 6: Request Restore (Alice)
+## Step 7: Request Restore (Alice)
 
 When Alice needs to restore (laptop died, ransomware, etc.):
 
@@ -221,7 +255,7 @@ Once approved, run:
 - Alice calls Bob: "Hey, my laptop died. Can you approve restore request f7e8d9c0?"
 - This out-of-band verification is intentional - it prevents a compromised machine from requesting restores without the human knowing
 
-## Step 7: Approve Request (Bob)
+## Step 8: Approve Request (Bob)
 
 Bob checks pending requests:
 
@@ -260,7 +294,7 @@ Your key share has been released.
 The requester can now restore their data.
 ```
 
-## Step 8: Restore Data (Alice)
+## Step 9: Restore Data (Alice)
 
 Now Alice can restore:
 

@@ -19,10 +19,11 @@ import (
 	"github.com/lcrostarosa/airgapper/internal/config"
 	"github.com/lcrostarosa/airgapper/internal/consent"
 	"github.com/lcrostarosa/airgapper/internal/restic"
+	"github.com/lcrostarosa/airgapper/internal/scheduler"
 	"github.com/lcrostarosa/airgapper/internal/sss"
 )
 
-const version = "0.2.0"
+const version = "0.3.0"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -55,6 +56,8 @@ func main() {
 		err = cmdRestore(args)
 	case "status":
 		err = cmdStatus(args)
+	case "schedule":
+		err = cmdSchedule(args)
 	case "serve":
 		err = cmdServe(args)
 	case "version":
@@ -74,7 +77,7 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Println(`Airgapper - Consensus-based encrypted backup
+	fmt.Print(`Airgapper - Consensus-based encrypted backup
 
 USAGE:
   airgapper <command> [options]
@@ -90,26 +93,36 @@ COMMANDS:
   deny        Deny a restore request
   restore     Restore from a snapshot (requires approval)
   status      Show status
-  serve       Run HTTP API server for remote control
+  schedule    Configure backup schedule
+  serve       Run HTTP API server (with optional scheduled backups)
   version     Show version
   help        Show this help
 
 WORKFLOW (Owner - Alice):
   1. airgapper init --name alice --repo rest:http://bob-nas:8000/alice-backup
   2. Give the displayed share to your peer
-  3. airgapper backup /important/data
-  4. When you need to restore:
+  3. airgapper schedule --set "daily" ~/Documents ~/Pictures
+  4. airgapper serve --addr :8080  (runs API + scheduled backups)
+  5. When you need to restore:
      airgapper request --snapshot latest --reason "laptop died"
-  5. Wait for peer approval, then:
+  6. Wait for peer approval, then:
      airgapper restore --request <id> --target /restore/path
 
 WORKFLOW (Host - Bob):
   1. Start restic-rest-server --append-only
   2. airgapper join --name bob --repo rest:http://localhost:8000/alice-backup --share <hex> --index 2
-  3. airgapper serve --addr :8080  (optional: run API for remote management)
+  3. airgapper serve --addr :8080
   4. When Alice requests restore:
      airgapper pending
      airgapper approve <request-id>
+
+SCHEDULE EXAMPLES:
+  airgapper schedule --set "daily" ~/Documents    # Daily at 2 AM
+  airgapper schedule --set "hourly" ~/Documents   # Every hour
+  airgapper schedule --set "every 4h" ~/Documents # Every 4 hours
+  airgapper schedule --set "0 3 * * *" ~/Documents # Cron: 3 AM daily
+  airgapper schedule --show                        # Show current schedule
+  airgapper schedule --clear                       # Remove schedule
 
 EXAMPLES:
   # Initialize with local repo (testing)
@@ -125,8 +138,9 @@ EXAMPLES:
   # Backup multiple paths
   airgapper backup ~/Documents ~/Pictures
 
-  # Request restore with specific snapshot
-  airgapper request --snapshot abc123 --reason "disk failure"`)
+  # Run server with scheduled backups
+  airgapper serve --schedule "daily" --paths ~/Documents,~/Pictures
+`)
 }
 
 func cmdInit(args []string) error {
@@ -231,7 +245,8 @@ func cmdInit(args []string) error {
 	fmt.Println("\n✅ Initialization complete!")
 	fmt.Println("\nNext steps:")
 	fmt.Println("  1. Give the share above to your backup host")
-	fmt.Println("  2. Run: airgapper backup <paths>")
+	fmt.Println("  2. Configure backup schedule: airgapper schedule --set daily ~/Documents")
+	fmt.Println("  3. Run: airgapper backup <paths>  (or start server for scheduled backups)")
 
 	return nil
 }
@@ -703,6 +718,16 @@ func cmdStatus(args []string) error {
 		fmt.Println("Peer:       Not configured")
 	}
 
+	// Show schedule if configured
+	if cfg.BackupSchedule != "" {
+		fmt.Printf("Schedule:   %s\n", cfg.BackupSchedule)
+		if len(cfg.BackupPaths) > 0 {
+			fmt.Printf("Paths:      %s\n", strings.Join(cfg.BackupPaths, ", "))
+		}
+	} else {
+		fmt.Println("Schedule:   Not configured")
+	}
+
 	// Check restic
 	if restic.IsInstalled() {
 		ver, _ := restic.Version()
@@ -719,6 +744,116 @@ func cmdStatus(args []string) error {
 	return nil
 }
 
+func cmdSchedule(args []string) error {
+	cfg, err := config.Load("")
+	if err != nil {
+		return err
+	}
+
+	if !cfg.IsOwner() {
+		return fmt.Errorf("only the data owner can configure backup schedule")
+	}
+
+	var showSchedule, clearSchedule bool
+	var setSchedule string
+	var paths []string
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--show":
+			showSchedule = true
+		case "--clear":
+			clearSchedule = true
+		case "--set":
+			if i+1 < len(args) {
+				setSchedule = args[i+1]
+				i++
+			}
+		default:
+			// Assume it's a path
+			if !strings.HasPrefix(args[i], "-") {
+				paths = append(paths, args[i])
+			}
+		}
+	}
+
+	// Default to showing schedule
+	if !clearSchedule && setSchedule == "" {
+		showSchedule = true
+	}
+
+	if showSchedule {
+		fmt.Println("📅 Backup Schedule")
+		fmt.Println("==================")
+		if cfg.BackupSchedule == "" {
+			fmt.Println("No schedule configured.")
+			fmt.Println()
+			fmt.Println("Set a schedule with:")
+			fmt.Println("  airgapper schedule --set daily ~/Documents")
+			fmt.Println("  airgapper schedule --set hourly ~/Documents ~/Pictures")
+			fmt.Println("  airgapper schedule --set \"0 3 * * *\" ~/Documents  # Cron: 3 AM daily")
+			fmt.Println("  airgapper schedule --set \"every 4h\" ~/Documents   # Every 4 hours")
+		} else {
+			fmt.Printf("Schedule: %s\n", cfg.BackupSchedule)
+			if len(cfg.BackupPaths) > 0 {
+				fmt.Printf("Paths:    %s\n", strings.Join(cfg.BackupPaths, ", "))
+			} else {
+				fmt.Println("Paths:    (none configured)")
+			}
+
+			// Show next run time
+			sched, err := scheduler.ParseSchedule(cfg.BackupSchedule)
+			if err == nil {
+				nextRun := sched.NextRun(time.Now())
+				fmt.Printf("Next run: %s (in %s)\n", nextRun.Format("2006-01-02 15:04:05"), scheduler.FormatDuration(time.Until(nextRun)))
+			}
+		}
+		return nil
+	}
+
+	if clearSchedule {
+		cfg.BackupSchedule = ""
+		cfg.BackupPaths = nil
+		if err := cfg.Save(); err != nil {
+			return err
+		}
+		fmt.Println("✅ Schedule cleared.")
+		return nil
+	}
+
+	if setSchedule != "" {
+		// Validate schedule
+		sched, err := scheduler.ParseSchedule(setSchedule)
+		if err != nil {
+			return fmt.Errorf("invalid schedule: %w", err)
+		}
+
+		cfg.BackupSchedule = setSchedule
+		if len(paths) > 0 {
+			cfg.BackupPaths = paths
+		}
+
+		if err := cfg.Save(); err != nil {
+			return err
+		}
+
+		fmt.Println("✅ Schedule configured!")
+		fmt.Printf("Schedule: %s\n", cfg.BackupSchedule)
+		if len(cfg.BackupPaths) > 0 {
+			fmt.Printf("Paths:    %s\n", strings.Join(cfg.BackupPaths, ", "))
+		}
+
+		nextRun := sched.NextRun(time.Now())
+		fmt.Printf("Next run: %s (in %s)\n", nextRun.Format("2006-01-02 15:04:05"), scheduler.FormatDuration(time.Until(nextRun)))
+		fmt.Println()
+		fmt.Println("To start scheduled backups, run:")
+		fmt.Println("  airgapper serve --addr :8080")
+		return nil
+	}
+
+	return fmt.Errorf("usage: airgapper schedule [--show|--clear|--set <schedule>] [paths...]")
+}
+
 func cmdServe(args []string) error {
 	cfg, err := config.Load("")
 	if err != nil {
@@ -727,11 +862,22 @@ func cmdServe(args []string) error {
 
 	// Parse args
 	addr := ":8080"
+	var scheduleOverride, pathsOverride string
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--addr", "-a":
 			if i+1 < len(args) {
 				addr = args[i+1]
+				i++
+			}
+		case "--schedule", "-s":
+			if i+1 < len(args) {
+				scheduleOverride = args[i+1]
+				i++
+			}
+		case "--paths", "-p":
+			if i+1 < len(args) {
+				pathsOverride = args[i+1]
 				i++
 			}
 		}
@@ -740,25 +886,77 @@ func cmdServe(args []string) error {
 	// Update config with listen address
 	cfg.ListenAddr = addr
 
-	fmt.Println("🌐 Airgapper API Server")
-	fmt.Println("=======================")
+	fmt.Println("🌐 Airgapper Server")
+	fmt.Println("===================")
 	fmt.Printf("Name: %s\n", cfg.Name)
 	fmt.Printf("Role: %s\n", cfg.Role)
-	fmt.Printf("Listening on: %s\n\n", addr)
+	fmt.Printf("API:  http://localhost%s\n\n", addr)
 
 	fmt.Println("Endpoints:")
-	fmt.Println("  GET  /health           - Health check")
-	fmt.Println("  GET  /api/status       - System status")
-	fmt.Println("  GET  /api/requests     - List pending requests")
-	fmt.Println("  POST /api/requests     - Create restore request")
-	fmt.Println("  GET  /api/requests/:id - Get request details")
-	fmt.Println("  POST /api/requests/:id/approve - Approve request")
-	fmt.Println("  POST /api/requests/:id/deny    - Deny request")
-	fmt.Println()
-	fmt.Println("Press Ctrl+C to stop")
+	fmt.Println("  GET  /health               - Health check")
+	fmt.Println("  GET  /api/status           - System status")
+	fmt.Println("  GET  /api/requests         - List pending requests")
+	fmt.Println("  POST /api/requests         - Create restore request")
+	fmt.Println("  GET  /api/requests/{id}    - Get request details")
+	fmt.Println("  POST /api/requests/{id}/approve - Approve request")
+	fmt.Println("  POST /api/requests/{id}/deny    - Deny request")
+	fmt.Println("  GET  /api/schedule         - Get schedule info")
+	fmt.Println("  POST /api/schedule         - Update schedule")
 	fmt.Println()
 
 	server := api.NewServer(cfg, addr)
+
+	// Set up scheduler if owner and schedule is configured
+	var sched *scheduler.Scheduler
+	if cfg.IsOwner() {
+		scheduleExpr := cfg.BackupSchedule
+		backupPaths := cfg.BackupPaths
+
+		// Override from command line
+		if scheduleOverride != "" {
+			scheduleExpr = scheduleOverride
+		}
+		if pathsOverride != "" {
+			backupPaths = strings.Split(pathsOverride, ",")
+		}
+
+		if scheduleExpr != "" && len(backupPaths) > 0 {
+			parsedSched, err := scheduler.ParseSchedule(scheduleExpr)
+			if err != nil {
+				return fmt.Errorf("invalid schedule: %w", err)
+			}
+
+			// Create backup function
+			backupFunc := func() error {
+				client := restic.NewClient(cfg.RepoURL, cfg.Password)
+				return client.Backup(backupPaths, []string{"airgapper", "scheduled"})
+			}
+
+			sched = scheduler.NewScheduler(parsedSched, backupFunc)
+			server.SetScheduler(sched)
+
+			fmt.Println("📅 Scheduled Backups:")
+			fmt.Printf("  Schedule: %s\n", scheduleExpr)
+			fmt.Printf("  Paths:    %s\n", strings.Join(backupPaths, ", "))
+			nextRun := parsedSched.NextRun(time.Now())
+			fmt.Printf("  Next:     %s\n", nextRun.Format("2006-01-02 15:04:05"))
+			fmt.Println()
+
+			sched.Start()
+		} else if cfg.IsOwner() {
+			if scheduleExpr == "" {
+				fmt.Println("📅 No backup schedule configured.")
+				fmt.Println("   Configure with: airgapper schedule --set daily ~/Documents")
+			} else if len(backupPaths) == 0 {
+				fmt.Println("📅 Schedule configured but no paths specified.")
+				fmt.Println("   Add paths with: airgapper schedule --set daily ~/Documents")
+			}
+			fmt.Println()
+		}
+	}
+
+	fmt.Println("Press Ctrl+C to stop")
+	fmt.Println()
 
 	// Handle shutdown
 	stop := make(chan os.Signal, 1)
@@ -773,6 +971,11 @@ func cmdServe(args []string) error {
 
 	<-stop
 	fmt.Println("\nShutting down...")
+
+	// Stop scheduler
+	if sched != nil {
+		sched.Stop()
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

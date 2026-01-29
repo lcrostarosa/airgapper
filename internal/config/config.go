@@ -39,6 +39,11 @@ type Config struct {
 	// API settings
 	ListenAddr string `json:"listen_addr,omitempty"` // Address for HTTP API (e.g., :8080)
 
+	// Backup settings (owner only)
+	BackupPaths    []string `json:"backup_paths,omitempty"`    // Paths to back up
+	BackupSchedule string   `json:"backup_schedule,omitempty"` // Schedule expression (cron or simple)
+	BackupExclude  []string `json:"backup_exclude,omitempty"`  // Patterns to exclude
+
 	// Paths
 	ConfigDir string `json:"-"` // Not serialized, set at runtime
 }
@@ -138,4 +143,13 @@ func (c *Config) IsOwner() bool {
 // IsHost returns true if this node is the backup host
 func (c *Config) IsHost() bool {
 	return c.Role == RoleHost
+}
+
+// SetSchedule sets the backup schedule
+func (c *Config) SetSchedule(schedule string, paths []string) error {
+	c.BackupSchedule = schedule
+	if len(paths) > 0 {
+		c.BackupPaths = paths
+	}
+	return c.Save()
 }
