@@ -1,3 +1,3 @@
-module github.com/lcrostar/airgapper
+module github.com/lcrostarosa/airgapper
 
-go 1.25.6
+go 1.21

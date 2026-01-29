@@ -8,23 +8,36 @@ import (
 	"path/filepath"
 )
 
+// Role defines the role of this node
+type Role string
+
+const (
+	RoleOwner Role = "owner" // Data owner (Alice) - creates backups
+	RoleHost  Role = "host"  // Backup host (Bob) - stores data, approves restores
+)
+
 // Config represents the Airgapper configuration
 type Config struct {
 	// Identity
-	Name       string `json:"name"`        // Human-readable name for this node
-	PublicKey  []byte `json:"public_key"`  // Ed25519 public key
-	PrivateKey []byte `json:"private_key"` // Ed25519 private key (encrypted at rest)
+	Name       string `json:"name"`                  // Human-readable name for this node
+	Role       Role   `json:"role"`                  // owner or host
+	PublicKey  []byte `json:"public_key,omitempty"`  // Ed25519 public key
+	PrivateKey []byte `json:"private_key,omitempty"` // Ed25519 private key (encrypted at rest)
 
 	// Repository
-	RepoURL    string `json:"repo_url"`    // Restic repository URL (e.g., rest:http://peer:8000/)
-	RepoID     string `json:"repo_id"`     // Unique repo identifier
+	RepoURL  string `json:"repo_url"`           // Restic repository URL (e.g., rest:http://peer:8000/)
+	RepoID   string `json:"repo_id,omitempty"`  // Unique repo identifier
+	Password string `json:"password,omitempty"` // Full repo password (only for owner, used for backup)
 
-	// Key shares
-	LocalShare  []byte `json:"local_share"`  // Our share of the repo password
-	ShareIndex  byte   `json:"share_index"`  // Our share index (1 or 2)
+	// Key shares (for restore consensus)
+	LocalShare []byte `json:"local_share,omitempty"` // Our share of the repo password
+	ShareIndex byte   `json:"share_index,omitempty"` // Our share index (1 or 2)
 
 	// Peer info
 	Peer *PeerInfo `json:"peer,omitempty"`
+
+	// API settings
+	ListenAddr string `json:"listen_addr,omitempty"` // Address for HTTP API (e.g., :8080)
 
 	// Paths
 	ConfigDir string `json:"-"` // Not serialized, set at runtime
@@ -33,8 +46,8 @@ type Config struct {
 // PeerInfo represents information about the other party
 type PeerInfo struct {
 	Name      string `json:"name"`
-	PublicKey []byte `json:"public_key"`
-	Address   string `json:"address"` // Network address for communication
+	PublicKey []byte `json:"public_key,omitempty"`
+	Address   string `json:"address,omitempty"` // Network address for communication
 }
 
 // DefaultConfigDir returns the default config directory
@@ -65,6 +78,16 @@ func Load(configDir string) (*Config, error) {
 
 	cfg.ConfigDir = configDir
 	return &cfg, nil
+}
+
+// Exists checks if a config exists
+func Exists(configDir string) bool {
+	if configDir == "" {
+		configDir = DefaultConfigDir()
+	}
+	configPath := filepath.Join(configDir, "config.json")
+	_, err := os.Stat(configPath)
+	return err == nil
 }
 
 // Save saves the configuration to disk
@@ -105,4 +128,14 @@ func (c *Config) LoadShare() ([]byte, byte, error) {
 		return nil, 0, errors.New("no local share found")
 	}
 	return c.LocalShare, c.ShareIndex, nil
+}
+
+// IsOwner returns true if this node is the data owner
+func (c *Config) IsOwner() bool {
+	return c.Role == RoleOwner
+}
+
+// IsHost returns true if this node is the backup host
+func (c *Config) IsHost() bool {
+	return c.Role == RoleHost
 }

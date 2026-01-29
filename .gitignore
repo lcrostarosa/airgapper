@@ -1,25 +1,30 @@
 # Binaries
-airgapper
+bin/
+/airgapper
 *.exe
-*.dll
-*.so
-*.dylib
 
-# Test binary
-*.test
-
-# Output of go coverage
-*.out
-
-# Go workspace
-go.work
+# Test coverage
+coverage.out
+coverage.html
 
 # IDE
 .idea/
 .vscode/
 *.swp
 *.swo
+*~
 
 # OS
 .DS_Store
 Thumbs.db
+
+# Go
+vendor/
+
+# Config (don't commit local config)
+.airgapper/
+
+# Docker volumes
+restic-data/
+airgapper-config/
+backup-data/
