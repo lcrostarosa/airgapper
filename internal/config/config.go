@@ -16,6 +16,14 @@ const (
 	RoleHost  Role = "host"  // Backup host (Bob) - stores data, approves restores
 )
 
+// PeerShare represents information about a peer's share
+type PeerShare struct {
+	Index    byte   `json:"index"`              // Share index
+	Name     string `json:"name,omitempty"`     // Peer name (if known)
+	Address  string `json:"address,omitempty"`  // Peer network address
+	Data     []byte `json:"data,omitempty"`     // Share data (only stored temporarily during setup)
+}
+
 // Config represents the Airgapper configuration
 type Config struct {
 	// Identity
@@ -30,10 +38,15 @@ type Config struct {
 	Password string `json:"password,omitempty"` // Full repo password (only for owner, used for backup)
 
 	// Key shares (for restore consensus)
-	LocalShare []byte `json:"local_share,omitempty"` // Our share of the repo password
-	ShareIndex byte   `json:"share_index,omitempty"` // Our share index (1 or 2)
+	LocalShare  []byte `json:"local_share,omitempty"`  // Our share of the repo password
+	ShareIndex  byte   `json:"share_index,omitempty"`  // Our share index (1-255)
+	Threshold   int    `json:"threshold,omitempty"`    // Number of shares required (k)
+	TotalShares int    `json:"total_shares,omitempty"` // Total number of shares (n)
 
-	// Peer info
+	// Peer shares info (owner tracks who has what)
+	PeerShares []PeerShare `json:"peer_shares,omitempty"`
+
+	// Legacy peer info (for backward compatibility)
 	Peer *PeerInfo `json:"peer,omitempty"`
 
 	// API settings
@@ -48,7 +61,7 @@ type Config struct {
 	ConfigDir string `json:"-"` // Not serialized, set at runtime
 }
 
-// PeerInfo represents information about the other party
+// PeerInfo represents information about the other party (legacy)
 type PeerInfo struct {
 	Name      string `json:"name"`
 	PublicKey []byte `json:"public_key,omitempty"`
@@ -82,6 +95,13 @@ func Load(configDir string) (*Config, error) {
 	}
 
 	cfg.ConfigDir = configDir
+
+	// Migration: set defaults for old configs without threshold
+	if cfg.Threshold == 0 {
+		cfg.Threshold = 2
+		cfg.TotalShares = 2
+	}
+
 	return &cfg, nil
 }
 
@@ -152,4 +172,34 @@ func (c *Config) SetSchedule(schedule string, paths []string) error {
 		c.BackupPaths = paths
 	}
 	return c.Save()
+}
+
+// AddPeer adds or updates a peer's information
+func (c *Config) AddPeer(name string, shareIndex byte, address string) error {
+	// Check if peer already exists
+	for i, p := range c.PeerShares {
+		if p.Index == shareIndex {
+			c.PeerShares[i].Name = name
+			c.PeerShares[i].Address = address
+			return c.Save()
+		}
+	}
+
+	// Add new peer
+	c.PeerShares = append(c.PeerShares, PeerShare{
+		Index:   shareIndex,
+		Name:    name,
+		Address: address,
+	})
+	return c.Save()
+}
+
+// GetPeerByIndex returns peer info by share index
+func (c *Config) GetPeerByIndex(index byte) *PeerShare {
+	for _, p := range c.PeerShares {
+		if p.Index == index {
+			return &p
+		}
+	}
+	return nil
 }

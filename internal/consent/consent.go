@@ -21,6 +21,14 @@ const (
 	StatusExpired  RequestStatus = "expired"
 )
 
+// CollectedShare represents a share collected from a peer
+type CollectedShare struct {
+	Index      byte      `json:"index"`
+	Data       []byte    `json:"data"`
+	ApprovedBy string    `json:"approved_by"`
+	ApprovedAt time.Time `json:"approved_at"`
+}
+
 // RestoreRequest represents a request to restore data
 type RestoreRequest struct {
 	ID          string        `json:"id"`
@@ -31,9 +39,17 @@ type RestoreRequest struct {
 	Status      RequestStatus `json:"status"`
 	CreatedAt   time.Time     `json:"created_at"`
 	ExpiresAt   time.Time     `json:"expires_at"`
-	ApprovedAt  *time.Time    `json:"approved_at,omitempty"`
-	ApprovedBy  string        `json:"approved_by,omitempty"`
-	ShareData   []byte        `json:"share_data,omitempty"` // Released share (only after approval)
+
+	// Threshold info
+	Threshold int `json:"threshold,omitempty"` // Number of shares needed
+
+	// Collected shares (for N-of-M threshold)
+	CollectedShares []CollectedShare `json:"collected_shares,omitempty"`
+
+	// Legacy fields (for backward compatibility with 2-of-2)
+	ApprovedAt *time.Time `json:"approved_at,omitempty"`
+	ApprovedBy string     `json:"approved_by,omitempty"`
+	ShareData  []byte     `json:"share_data,omitempty"` // Released share (only after approval)
 }
 
 // Manager handles consent operations
@@ -130,12 +146,17 @@ func (m *Manager) ListPending() ([]*RestoreRequest, error) {
 
 // Approve approves a request and attaches the share data
 func (m *Manager) Approve(id, approver string, shareData []byte) error {
+	return m.ApproveWithIndex(id, approver, shareData, 0)
+}
+
+// ApproveWithIndex approves a request with a specific share index
+func (m *Manager) ApproveWithIndex(id, approver string, shareData []byte, shareIndex byte) error {
 	req, err := m.GetRequest(id)
 	if err != nil {
 		return err
 	}
 
-	if req.Status != StatusPending {
+	if req.Status != StatusPending && req.Status != StatusApproved {
 		return errors.New("request is not pending")
 	}
 
@@ -146,6 +167,26 @@ func (m *Manager) Approve(id, approver string, shareData []byte) error {
 	}
 
 	now := time.Now()
+
+	// Check if this approver already submitted a share
+	for _, cs := range req.CollectedShares {
+		if cs.ApprovedBy == approver {
+			return errors.New("already approved by this user")
+		}
+		if shareIndex > 0 && cs.Index == shareIndex {
+			return errors.New("share with this index already collected")
+		}
+	}
+
+	// Add the new share
+	req.CollectedShares = append(req.CollectedShares, CollectedShare{
+		Index:      shareIndex,
+		Data:       shareData,
+		ApprovedBy: approver,
+		ApprovedAt: now,
+	})
+
+	// Update legacy fields for backward compatibility
 	req.Status = StatusApproved
 	req.ApprovedAt = &now
 	req.ApprovedBy = approver
@@ -171,6 +212,15 @@ func (m *Manager) Deny(id, denier string) error {
 	req.ApprovedBy = denier
 
 	return m.saveRequest(req)
+}
+
+// ShareCount returns the number of shares collected for a request
+func (m *Manager) ShareCount(id string) (int, error) {
+	req, err := m.GetRequest(id)
+	if err != nil {
+		return 0, err
+	}
+	return len(req.CollectedShares), nil
 }
 
 func (m *Manager) saveRequest(req *RestoreRequest) error {
