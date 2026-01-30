@@ -47,10 +47,10 @@ func init() {
 	joinCmd.Flags().IntVarP(&joinThreshold, "threshold", "t", 2, "Number of shares required to restore")
 	joinCmd.Flags().IntVarP(&joinTotalShares, "total", "T", 2, "Total number of shares")
 
-	joinCmd.MarkFlagRequired("name")
-	joinCmd.MarkFlagRequired("repo")
-	joinCmd.MarkFlagRequired("share")
-	joinCmd.MarkFlagRequired("index")
+	_ = joinCmd.MarkFlagRequired("name")
+	_ = joinCmd.MarkFlagRequired("repo")
+	_ = joinCmd.MarkFlagRequired("share")
+	_ = joinCmd.MarkFlagRequired("index")
 }
 
 func runJoin(cmd *cobra.Command, args []string) error {

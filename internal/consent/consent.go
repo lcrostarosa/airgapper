@@ -107,7 +107,7 @@ func (m *Manager) GetRequest(id string) (*RestoreRequest, error) {
 	// Check expiry
 	if req.Status == StatusPending && time.Now().After(req.ExpiresAt) {
 		req.Status = StatusExpired
-		m.saveRequest(&req)
+		_ = m.saveRequest(&req) // Best effort save of expired status
 	}
 
 	return &req, nil
@@ -162,7 +162,7 @@ func (m *Manager) ApproveWithIndex(id, approver string, shareData []byte, shareI
 
 	if time.Now().After(req.ExpiresAt) {
 		req.Status = StatusExpired
-		m.saveRequest(req)
+		_ = m.saveRequest(req) // Best effort save of expired status
 		return errors.New("request has expired")
 	}
 

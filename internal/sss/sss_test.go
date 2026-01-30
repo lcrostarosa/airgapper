@@ -195,7 +195,7 @@ func TestCombineErrors(t *testing.T) {
 func TestRandomSecrets(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		secret := make([]byte, 32)
-		rand.Read(secret)
+		_, _ = rand.Read(secret)
 
 		shares, err := Split(secret, 2, 2)
 		if err != nil {
@@ -226,10 +226,9 @@ func TestGF256Operations(t *testing.T) {
 		}
 	}
 
-	// Test multiplication
-	if gfMul(0x53, 0xca) != 0x01 {
-		// This specific test may not be accurate, let's test properties instead
-	}
+	// Test multiplication - verify basic operation doesn't panic
+	// (specific values are implementation-dependent)
+	_ = gfMul(0x53, 0xca)
 
 	// Test that a * 1 = a
 	for i := 0; i < 256; i++ {
@@ -256,7 +255,7 @@ func TestGF256Operations(t *testing.T) {
 
 func BenchmarkSplit(b *testing.B) {
 	secret := make([]byte, 64)
-	rand.Read(secret)
+	_, _ = rand.Read(secret)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -266,7 +265,7 @@ func BenchmarkSplit(b *testing.B) {
 
 func BenchmarkCombine(b *testing.B) {
 	secret := make([]byte, 64)
-	rand.Read(secret)
+	_, _ = rand.Read(secret)
 	shares, _ := Split(secret, 2, 2)
 
 	b.ResetTimer()

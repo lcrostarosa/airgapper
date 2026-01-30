@@ -50,8 +50,8 @@ func init() {
 	initCmd.Flags().IntVarP(&initThreshold, "threshold", "t", 2, "Number of shares required to restore (k)")
 	initCmd.Flags().IntVarP(&initShares, "shares", "s", 2, "Total number of shares to create (n)")
 
-	initCmd.MarkFlagRequired("name")
-	initCmd.MarkFlagRequired("repo")
+	_ = initCmd.MarkFlagRequired("name")
+	_ = initCmd.MarkFlagRequired("repo")
 }
 
 func runInit(cmd *cobra.Command, args []string) error {

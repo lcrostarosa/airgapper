@@ -34,8 +34,8 @@ func init() {
 	restoreCmd.Flags().StringVarP(&restoreRequest, "request", "r", "", "Request ID (required)")
 	restoreCmd.Flags().StringVarP(&restoreTarget, "target", "t", "", "Target directory for restore (required)")
 
-	restoreCmd.MarkFlagRequired("request")
-	restoreCmd.MarkFlagRequired("target")
+	_ = restoreCmd.MarkFlagRequired("request")
+	_ = restoreCmd.MarkFlagRequired("target")
 }
 
 func runRestore(cmd *cobra.Command, args []string) error {

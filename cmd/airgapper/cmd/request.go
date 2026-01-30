@@ -38,7 +38,7 @@ func init() {
 	requestCmd.Flags().StringVarP(&requestReason, "reason", "m", "", "Reason for restore request (required)")
 	requestCmd.Flags().StringVarP(&requestPeer, "peer", "p", "", "Peer address to notify")
 
-	requestCmd.MarkFlagRequired("reason")
+	_ = requestCmd.MarkFlagRequired("reason")
 }
 
 func runRequest(cmd *cobra.Command, args []string) error {

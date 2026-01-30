@@ -158,7 +158,6 @@ func (s *Schedule) matches(t time.Time) bool {
 type Scheduler struct {
 	schedule   *Schedule
 	backupFunc func() error
-	paths      []string
 	stop       chan struct{}
 	wg         sync.WaitGroup
 	mu         sync.Mutex

@@ -88,13 +88,13 @@ type APIResponse struct {
 func jsonResponse(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(APIResponse{Success: status < 400, Data: data})
+	_ = json.NewEncoder(w).Encode(APIResponse{Success: status < 400, Data: data})
 }
 
 func jsonError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(APIResponse{Success: false, Error: message})
+	_ = json.NewEncoder(w).Encode(APIResponse{Success: false, Error: message})
 }
 
 // Handlers
@@ -298,9 +298,8 @@ type ApproveBody struct {
 
 func (s *Server) handleApprove(w http.ResponseWriter, r *http.Request, id string) {
 	var body ApproveBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		// Empty body is OK - we use local share
-	}
+	// Empty body is OK - we use local share if no share provided
+	_ = json.NewDecoder(r.Body).Decode(&body)
 
 	share := body.Share
 	if share == nil {
