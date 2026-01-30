@@ -259,7 +259,7 @@ func BenchmarkSplit(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		Split(secret, 2, 2)
+		_, _ = Split(secret, 2, 2)
 	}
 }
 
@@ -270,6 +270,6 @@ func BenchmarkCombine(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		Combine(shares)
+		_, _ = Combine(shares)
 	}
 }
