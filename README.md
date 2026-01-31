@@ -4,6 +4,28 @@
 
 Airgapper is a control plane for peer-to-peer NAS backups where no single party can read, delete, or restore the data alone. It wraps [restic](https://restic.net) for encrypted backups and uses Shamir's Secret Sharing to split the decryption key between parties.
 
+## Project Structure
+
+```
+airgapper/
+├── .github/           # GitHub Actions workflows
+├── frontend/          # React + Vite web UI
+│   ├── src/
+│   ├── package.json
+│   └── vite.config.ts
+├── backend/           # Go backend
+│   ├── cmd/airgapper/ # CLI entrypoint
+│   ├── internal/      # Internal packages
+│   ├── pkg/           # Public packages
+│   └── go.mod
+├── docker/            # Docker configuration
+├── docs/              # Documentation
+├── examples/          # Example configurations
+├── docker-compose.yml # Full stack compose
+├── Makefile           # Build commands
+└── README.md
+```
+
 ## The Problem
 
 Traditional backups have a critical flaw: if your machine is compromised (ransomware, theft, malicious admin), the attacker can often:
@@ -28,23 +50,64 @@ Airgapper provides **defense in depth**:
 ### Prerequisites
 
 - [restic](https://restic.net/installation/) installed
+- [Go 1.21+](https://golang.org/dl/) (for building from source)
+- [Node.js 20+](https://nodejs.org/) (for frontend development)
 - A peer (friend, family member, colleague) willing to hold your key share
 - (Optional) [restic-rest-server](https://github.com/restic/rest-server) for append-only storage
 
 ### Installation
 
 ```bash
-# From source
-go install github.com/lcrostarosa/airgapper/cmd/airgapper@latest
-
-# Or build locally
+# Clone the repository
 git clone https://github.com/lcrostarosa/airgapper.git
 cd airgapper
+
+# Build everything
 make build
+
+# Or build just the backend
+make backend-build
+
+# The binary is at ./bin/airgapper
 ./bin/airgapper --help
 ```
 
-### Workflow Overview
+### Development
+
+```bash
+# Install frontend dependencies
+make frontend-install
+
+# Run frontend dev server (http://localhost:5173)
+make frontend-dev
+
+# Run backend in dev mode (http://localhost:8080)
+cd backend && go run ./cmd/airgapper serve --addr :8080
+
+# Run both together
+make dev
+
+# Run all tests
+make test
+```
+
+### Docker
+
+```bash
+# Build the Docker image
+make docker
+
+# Run full stack (storage + backend + frontend)
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop
+docker-compose down
+```
+
+## Workflow Overview
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -89,7 +152,7 @@ make build
 docker run -d -p 8000:8000 restic/rest-server --append-only --no-auth
 
 # Alice initializes her backup
-airgapper init --name alice --repo rest:http://bob-nas:8000/alice-backup
+./bin/airgapper init --name alice --repo rest:http://bob-nas:8000/alice-backup
 
 # Output includes a share to give to Bob:
 #   Share:   a1b2c3d4e5f6...
@@ -100,20 +163,17 @@ airgapper init --name alice --repo rest:http://bob-nas:8000/alice-backup
 
 ```bash
 # Set up daily backups at 2 AM
-airgapper schedule --set daily ~/Documents ~/Pictures
+./bin/airgapper schedule --set daily ~/Documents ~/Pictures
 
 # Or use cron syntax
-airgapper schedule --set "0 3 * * *" ~/Documents  # 3 AM daily
-
-# Or simple intervals
-airgapper schedule --set "every 4h" ~/Documents   # Every 4 hours
+./bin/airgapper schedule --set "0 3 * * *" ~/Documents  # 3 AM daily
 ```
 
 **3. Bob joins (backup host)**
 
 ```bash
 # Bob receives Alice's share and joins
-airgapper join --name bob \
+./bin/airgapper join --name bob \
   --repo rest:http://localhost:8000/alice-backup \
   --share a1b2c3d4e5f6... \
   --index 2
@@ -123,71 +183,64 @@ airgapper join --name bob \
 
 ```bash
 # Alice runs the server for scheduled backups
-airgapper serve --addr :8080
-
-# Or run a one-off backup manually
-airgapper backup ~/Documents ~/Pictures
+./bin/airgapper serve --addr :8080
 ```
 
 **5. Alice requests restore (requires Bob's approval)**
 
 ```bash
-# Something went wrong, Alice needs her data back
-airgapper request --snapshot latest --reason "laptop crashed"
-
-# Request ID: abc123...
+./bin/airgapper request --snapshot latest --reason "laptop crashed"
 ```
 
 **6. Bob approves**
 
 ```bash
-# Bob sees the pending request
-airgapper pending
-
-# Bob approves after verifying with Alice (phone call, etc.)
-airgapper approve abc123
+./bin/airgapper pending
+./bin/airgapper approve abc123
 ```
 
 **7. Alice restores**
 
 ```bash
-airgapper restore --request abc123 --target ~/restore/
+./bin/airgapper restore --request abc123 --target ~/restore/
 ```
 
-## Architecture
+## Make Targets
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                              SYSTEM                                     │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  ┌─────────────────┐                         ┌─────────────────┐        │
-│  │   ALICE         │                         │   BOB           │        │
-│  │   (Owner)       │                         │   (Host)        │        │
-│  │                 │     Encrypted Data      │                 │        │
-│  │  ┌───────────┐  │   ──────────────────▶   │  ┌───────────┐  │        │
-│  │  │  Restic   │  │     (append-only)       │  │REST Server│  │        │
-│  │  └───────────┘  │                         │  └───────────┘  │        │
-│  │       │         │                         │       │         │        │
-│  │  ┌───────────┐  │   Approval Requests     │  ┌───────────┐  │        │
-│  │  │ Airgapper │  │ ◀────────────────────▶  │  │ Airgapper │  │        │
-│  │  └───────────┘  │                         │  └───────────┘  │        │
-│  │       │         │                         │       │         │        │
-│  │  ┌───────────┐  │                         │  ┌───────────┐  │        │
-│  │  │Key Share 1│  │                         │  │Key Share 2│  │        │
-│  │  │+ Password │  │                         │  │  (only)   │  │        │
-│  │  └───────────┘  │                         │  └───────────┘  │        │
-│  │                 │                         │                 │        │
-│  └─────────────────┘                         └─────────────────┘        │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
+```bash
+make help               # Show all targets
+
+# Combined
+make build              # Build frontend + backend
+make dev                # Run both in dev mode
+make test               # Run all tests
+make clean              # Clean build artifacts
+
+# Frontend
+make frontend-install   # Install npm dependencies
+make frontend-dev       # Run Vite dev server
+make frontend-build     # Build for production
+make frontend-test      # Run frontend tests
+make frontend-lint      # Lint frontend code
+
+# Backend
+make backend-build      # Build Go binary
+make backend-test       # Run Go tests
+make backend-lint       # Run Go linters
+make backend-fmt        # Format Go code
+
+# Docker
+make docker             # Build Docker image
+make docker-compose-up  # Start full stack
+make docker-compose-down # Stop stack
 ```
 
-**Key points:**
-- Alice keeps the full password (for backups) AND her key share
-- Bob keeps only his key share (cannot backup or read data alone)
-- Storage is append-only (neither can delete backups)
-- Restore requires combining both shares
+## Documentation
+
+- [Getting Started Guide](docs/GETTING-STARTED.md) - Detailed tutorial
+- [Security Model](docs/SECURITY.md) - Threat model and assumptions
+- [API Reference](docs/API.md) - HTTP API documentation
+- [Design Document](docs/DESIGN.md) - Architecture and design decisions
 
 ## Commands
 
@@ -206,100 +259,16 @@ airgapper restore --request abc123 --target ~/restore/
 | `status` | Show status | Both |
 | `serve` | Run HTTP API + scheduled backups | Both |
 
-## Scheduled Backups
-
-Airgapper can run backups on a schedule. Configure once, run as a daemon:
-
-```bash
-# Configure schedule (owner only)
-airgapper schedule --set daily ~/Documents ~/Pictures
-
-# View current schedule
-airgapper schedule --show
-
-# Clear schedule
-airgapper schedule --clear
-```
-
-**Schedule formats:**
-- `daily` - Every day at 2 AM
-- `hourly` - Every hour
-- `weekly` - Every Sunday at 2 AM
-- `every 4h` - Every 4 hours
-- `every 30m` - Every 30 minutes
-- `0 3 * * *` - Cron syntax (3 AM daily)
-- `0 */6 * * *` - Cron syntax (every 6 hours)
-
-**Run as daemon:**
-```bash
-# Start server with scheduled backups
-airgapper serve --addr :8080
-
-# Or override schedule at runtime
-airgapper serve --schedule "every 4h" --paths ~/Documents,~/Pictures
-```
-
-## HTTP API
-
-Run `airgapper serve --addr :8080` to expose a REST API for remote management:
-
-```bash
-# Health check
-curl http://localhost:8080/health
-
-# Get status
-curl http://localhost:8080/api/status
-
-# List pending requests
-curl http://localhost:8080/api/requests
-
-# Approve a request
-curl -X POST http://localhost:8080/api/requests/abc123/approve
-```
-
-See [docs/API.md](docs/API.md) for full API documentation.
-
-## Docker
-
-```bash
-# Build the image
-make docker
-
-# Run full stack (Alice + Bob + storage)
-docker-compose -f docker/docker-compose.yml up -d
-
-# Or use the simple example
-docker-compose -f examples/docker-compose.example.yml up -d
-```
-
-## Documentation
-
-- [Getting Started Guide](docs/GETTING-STARTED.md) - Detailed tutorial
-- [Security Model](docs/SECURITY.md) - Threat model and assumptions
-- [API Reference](docs/API.md) - HTTP API documentation
-- [Design Document](docs/DESIGN.md) - Architecture and design decisions
-
-## Personas
-
-### Technical Users
-Full CLI control, can customize everything. Integrate with existing backup scripts.
-
-### Home Users  
-Two friends back up to each other's NAS. Simple setup, phone call to approve restores.
-
-### Small Business
-IT backs up to offsite location. Requires manager approval for restores.
-
 ## Contributing
 
-Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+Contributions welcome!
 
 ```bash
 # Development
-make build      # Build binary
-make test       # Run tests
-make lint       # Run linters
-make help       # Show all targets
+make build        # Build binary
+make test         # Run tests
+make backend-lint # Run linters
+make help         # Show all targets
 ```
 
 ## License
@@ -311,6 +280,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 Built with:
 - [restic](https://restic.net) - Backup engine
 - [restic-rest-server](https://github.com/restic/rest-server) - Append-only storage
+- [React](https://react.dev) + [Vite](https://vitejs.dev) - Frontend
 - Shamir's Secret Sharing - Key splitting
 
 ---

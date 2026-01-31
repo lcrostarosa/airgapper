@@ -1,0 +1,49 @@
+# Airgapper Docker Compose
+# Run the full stack for development or production
+
+services:
+  # Restic REST Server - append-only backup storage
+  storage:
+    image: restic/rest-server:latest
+    container_name: airgapper-storage
+    command: ["--append-only", "--no-auth"]
+    volumes:
+      - restic-data:/data
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  # Backend API Server
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: airgapper-backend
+    volumes:
+      - backend-config:/home/airgapper/.airgapper
+    ports:
+      - "8080:8080"
+    environment:
+      - AIRGAPPER_NAME=airgapper
+    depends_on:
+      - storage
+    command: ["serve", "--addr", ":8080"]
+    restart: unless-stopped
+
+  # Frontend (development)
+  frontend:
+    image: node:22-alpine
+    container_name: airgapper-frontend
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+      - frontend-node-modules:/app/node_modules
+    ports:
+      - "5173:5173"
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    restart: unless-stopped
+
+volumes:
+  restic-data:
+  backend-config:
+  frontend-node-modules:

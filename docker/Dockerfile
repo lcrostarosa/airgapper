@@ -6,14 +6,17 @@ WORKDIR /app
 # Install dependencies
 RUN apk add --no-cache git ca-certificates
 
-# Copy go mod files
-COPY go.mod go.sum* ./
+# Copy go mod files from backend
+COPY backend/go.mod backend/go.sum* ./backend/
+WORKDIR /app/backend
 RUN go mod download || true
 
-# Copy source
-COPY . .
+# Copy backend source
+WORKDIR /app
+COPY backend/ ./backend/
 
 # Build
+WORKDIR /app/backend
 RUN CGO_ENABLED=0 GOOS=linux go build -o /airgapper ./cmd/airgapper
 
 # Runtime image

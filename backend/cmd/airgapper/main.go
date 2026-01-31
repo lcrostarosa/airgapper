@@ -15,12 +15,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/lcrostarosa/airgapper/internal/api"
-	"github.com/lcrostarosa/airgapper/internal/config"
-	"github.com/lcrostarosa/airgapper/internal/consent"
-	"github.com/lcrostarosa/airgapper/internal/restic"
-	"github.com/lcrostarosa/airgapper/internal/scheduler"
-	"github.com/lcrostarosa/airgapper/internal/sss"
+	"github.com/lcrostarosa/airgapper/backend/internal/api"
+	"github.com/lcrostarosa/airgapper/backend/internal/config"
+	"github.com/lcrostarosa/airgapper/backend/internal/consent"
+	"github.com/lcrostarosa/airgapper/backend/internal/restic"
+	"github.com/lcrostarosa/airgapper/backend/internal/scheduler"
+	"github.com/lcrostarosa/airgapper/backend/internal/sss"
 )
 
 const version = "0.3.0"

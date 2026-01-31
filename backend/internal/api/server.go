@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lcrostarosa/airgapper/internal/config"
-	"github.com/lcrostarosa/airgapper/internal/consent"
-	"github.com/lcrostarosa/airgapper/internal/scheduler"
+	"github.com/lcrostarosa/airgapper/backend/internal/config"
+	"github.com/lcrostarosa/airgapper/backend/internal/consent"
+	"github.com/lcrostarosa/airgapper/backend/internal/scheduler"
 )
 
 // Server is the HTTP API server
