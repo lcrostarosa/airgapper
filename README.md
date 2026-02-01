@@ -1,6 +1,12 @@
 # Airgapper
 
-**Consensus-based encrypted backups with ransomware protection**
+<p align="center">
+  <img src="airgapper-logo.svg" alt="Airgapper Logo" width="200" height="200">
+</p>
+
+<p align="center">
+  <strong>Consensus-based encrypted backups with ransomware protection</strong>
+</p>
 
 Airgapper is a control plane for peer-to-peer NAS backups where no single party can read, delete, or restore the data alone. It wraps [restic](https://restic.net) for encrypted backups and uses Shamir's Secret Sharing to split the decryption key between parties.
 
