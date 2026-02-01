@@ -56,14 +56,20 @@ export function Welcome({ onNavigate, hasVault }: WelcomeProps) {
             onClick={() => onNavigate("init")}
             className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
           >
-            Initialize New Vault (Data Owner)
+            Back Up My Data
           </button>
+          <p className="text-sm text-gray-500 mt-2 mb-4">
+            Initialize a new vault as the data owner
+          </p>
           <button
             onClick={() => onNavigate("join")}
             className="w-full bg-gray-700 hover:bg-gray-600 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
           >
-            Join as Backup Host
+            Host Someone's Backup
           </button>
+          <p className="text-sm text-gray-500 mt-2">
+            Store encrypted backups for someone else
+          </p>
         </div>
       )}
     </div>

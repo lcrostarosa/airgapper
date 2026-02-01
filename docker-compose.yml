@@ -22,12 +22,13 @@ services:
     volumes:
       - backend-config:/home/airgapper/.airgapper
     ports:
-      - "8080:8080"
+      - "8081:8081"
     environment:
       - AIRGAPPER_NAME=airgapper
+      - AIRGAPPER_PORT=8081
     depends_on:
       - storage
-    command: ["serve", "--addr", ":8080"]
+    command: ["serve"]
     restart: unless-stopped
 
   # Frontend (development)

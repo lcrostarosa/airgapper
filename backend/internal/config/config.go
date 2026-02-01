@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 // Role defines the role of this node
@@ -15,6 +16,24 @@ const (
 	RoleOwner Role = "owner" // Data owner (Alice) - creates backups
 	RoleHost  Role = "host"  // Backup host (Bob) - stores data, approves restores
 )
+
+// KeyHolder represents a participant in the consensus scheme
+type KeyHolder struct {
+	ID        string    `json:"id"`                   // Hash of public key (first 16 hex chars of SHA256)
+	Name      string    `json:"name"`                 // Human-readable name
+	PublicKey []byte    `json:"public_key"`           // Ed25519 public key
+	Address   string    `json:"address,omitempty"`    // Network address for communication
+	JoinedAt  time.Time `json:"joined_at"`            // When this key holder joined
+	IsOwner   bool      `json:"is_owner,omitempty"`   // True if this is the vault owner
+}
+
+// ConsensusConfig defines the m-of-n approval requirements
+type ConsensusConfig struct {
+	Threshold       int         `json:"threshold"`                  // m (required approvals)
+	TotalKeys       int         `json:"total_keys"`                 // n (total participants)
+	KeyHolders      []KeyHolder `json:"key_holders"`                // Registered key holders
+	RequireApproval bool        `json:"require_approval,omitempty"` // For 1/1: require explicit approval?
+}
 
 // Config represents the Airgapper configuration
 type Config struct {
@@ -29,11 +48,14 @@ type Config struct {
 	RepoID   string `json:"repo_id,omitempty"`  // Unique repo identifier
 	Password string `json:"password,omitempty"` // Full repo password (only for owner, used for backup)
 
-	// Key shares (for restore consensus)
+	// Key shares (for restore consensus - legacy SSS mode)
 	LocalShare []byte `json:"local_share,omitempty"` // Our share of the repo password
 	ShareIndex byte   `json:"share_index,omitempty"` // Our share index (1 or 2)
 
-	// Peer info
+	// Consensus configuration (new m-of-n mode)
+	Consensus *ConsensusConfig `json:"consensus,omitempty"`
+
+	// Peer info (legacy - for 2-of-2 SSS mode)
 	Peer *PeerInfo `json:"peer,omitempty"`
 
 	// API settings
@@ -43,6 +65,15 @@ type Config struct {
 	BackupPaths    []string `json:"backup_paths,omitempty"`    // Paths to back up
 	BackupSchedule string   `json:"backup_schedule,omitempty"` // Schedule expression (cron or simple)
 	BackupExclude  []string `json:"backup_exclude,omitempty"`  // Patterns to exclude
+
+	// Filesystem browsing security
+	AllowedBrowseRoots []string `json:"allowed_browse_roots,omitempty"` // Allowed root directories for browsing
+
+	// Storage server settings (host only)
+	StoragePath       string `json:"storage_path,omitempty"`       // Path to store backup data
+	StorageQuotaBytes int64  `json:"storage_quota_bytes,omitempty"` // Storage quota in bytes (0 = unlimited)
+	StorageAppendOnly bool   `json:"storage_append_only,omitempty"` // Enable append-only mode
+	StoragePort       int    `json:"storage_port,omitempty"`        // Port for storage server (default: uses main API port)
 
 	// Paths
 	ConfigDir string `json:"-"` // Not serialized, set at runtime
@@ -152,4 +183,64 @@ func (c *Config) SetSchedule(schedule string, paths []string) error {
 		c.BackupPaths = paths
 	}
 	return c.Save()
+}
+
+// UsesSSSMode returns true if using legacy Shamir's Secret Sharing mode
+func (c *Config) UsesSSSMode() bool {
+	return c.Consensus == nil && c.LocalShare != nil
+}
+
+// UsesConsensusMode returns true if using new m-of-n consensus mode
+func (c *Config) UsesConsensusMode() bool {
+	return c.Consensus != nil
+}
+
+// AddKeyHolder adds a new key holder to the consensus configuration
+func (c *Config) AddKeyHolder(holder KeyHolder) error {
+	if c.Consensus == nil {
+		return errors.New("consensus not configured")
+	}
+
+	// Check if already exists
+	for _, kh := range c.Consensus.KeyHolders {
+		if kh.ID == holder.ID {
+			return errors.New("key holder already registered")
+		}
+	}
+
+	c.Consensus.KeyHolders = append(c.Consensus.KeyHolders, holder)
+	return c.Save()
+}
+
+// GetKeyHolder finds a key holder by ID
+func (c *Config) GetKeyHolder(id string) *KeyHolder {
+	if c.Consensus == nil {
+		return nil
+	}
+	for i := range c.Consensus.KeyHolders {
+		if c.Consensus.KeyHolders[i].ID == id {
+			return &c.Consensus.KeyHolders[i]
+		}
+	}
+	return nil
+}
+
+// CanRestoreDirectly returns true if the owner can restore without approval
+// (solo mode with RequireApproval=false)
+func (c *Config) CanRestoreDirectly() bool {
+	if c.Consensus == nil {
+		return false
+	}
+	return c.Consensus.Threshold == 1 &&
+		c.Consensus.TotalKeys == 1 &&
+		!c.Consensus.RequireApproval
+}
+
+// RequiredApprovals returns the number of approvals needed for a restore
+func (c *Config) RequiredApprovals() int {
+	if c.Consensus == nil {
+		// Legacy SSS mode always requires 2 shares
+		return 2
+	}
+	return c.Consensus.Threshold
 }

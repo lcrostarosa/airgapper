@@ -185,13 +185,13 @@ Paths:    /home/alice/Documents, /home/alice/Pictures
 Next run: 2024-01-26 02:00:00 (in 8.5 hours)
 
 To start scheduled backups, run:
-  airgapper serve --addr :8080
+  airgapper serve  # Default port :8081, or set AIRGAPPER_PORT
 ```
 
 **Run as daemon:**
 ```bash
 # Start the server (runs scheduled backups + HTTP API)
-airgapper serve --addr :8080
+airgapper serve  # Default port :8081
 ```
 
 ## Step 6: Manual Backups (Alice)
@@ -325,22 +325,22 @@ For remote management, both parties can run the API server:
 
 ```bash
 # Bob runs the server
-airgapper serve --addr :8080
+airgapper serve  # Default port :8081
 ```
 
 Alice can then interact via HTTP:
 
 ```bash
 # Check Bob's status
-curl http://bob-nas:8080/api/status
+curl http://bob-nas:8081/api/status
 
 # Create request via API
-curl -X POST http://bob-nas:8080/api/requests \
+curl -X POST http://bob-nas:8081/api/requests \
   -H "Content-Type: application/json" \
   -d '{"snapshot_id": "latest", "reason": "need restore"}'
 
 # Bob approves via API (or CLI)
-curl -X POST http://bob-nas:8080/api/requests/abc123/approve
+curl -X POST http://bob-nas:8081/api/requests/abc123/approve
 ```
 
 ## Running with Docker

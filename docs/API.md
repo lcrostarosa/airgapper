@@ -5,7 +5,7 @@ The Airgapper API provides remote control of backup and restore operations.
 ## Starting the Server
 
 ```bash
-airgapper serve --addr :8080
+airgapper serve  # Default port :8081, or set AIRGAPPER_PORT
 ```
 
 ## Endpoints
@@ -51,7 +51,7 @@ Returns current system status.
     "pending_requests": 0,
     "peer": {
       "name": "bob",
-      "address": "http://bob:8080"
+      "address": "http://bob:8081"
     }
   }
 }
@@ -287,40 +287,40 @@ All errors return a consistent format:
 
 ```bash
 # Health check
-curl http://localhost:8080/health
+curl http://localhost:8081/health
 
 # Get status
-curl http://localhost:8080/api/status
+curl http://localhost:8081/api/status
 
 # Create restore request
-curl -X POST http://localhost:8080/api/requests \
+curl -X POST http://localhost:8081/api/requests \
   -H "Content-Type: application/json" \
   -d '{"reason": "need files back", "snapshot_id": "latest"}'
 
 # List pending requests
-curl http://localhost:8080/api/requests
+curl http://localhost:8081/api/requests
 
 # Approve a request
-curl -X POST http://localhost:8080/api/requests/a1b2c3d4/approve
+curl -X POST http://localhost:8081/api/requests/a1b2c3d4/approve
 
 # Deny a request
-curl -X POST http://localhost:8080/api/requests/a1b2c3d4/deny
+curl -X POST http://localhost:8081/api/requests/a1b2c3d4/deny
 ```
 
 ### Using HTTPie
 
 ```bash
 # Health check
-http :8080/health
+http :8081/health
 
 # Get status
-http :8080/api/status
+http :8081/api/status
 
 # Create request
-http POST :8080/api/requests reason="need restore" snapshot_id="latest"
+http POST :8081/api/requests reason="need restore" snapshot_id="latest"
 
 # Approve
-http POST :8080/api/requests/a1b2c3d4/approve
+http POST :8081/api/requests/a1b2c3d4/approve
 ```
 
 ### Using Python
@@ -328,7 +328,7 @@ http POST :8080/api/requests/a1b2c3d4/approve
 ```python
 import requests
 
-BASE_URL = "http://localhost:8080"
+BASE_URL = "http://localhost:8081"
 
 # Get status
 resp = requests.get(f"{BASE_URL}/api/status")

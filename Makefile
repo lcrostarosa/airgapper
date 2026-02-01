@@ -22,9 +22,9 @@ build: backend-build frontend-build ## Build everything
 
 dev: ## Run both frontend and backend in dev mode
 	@echo "Starting development servers..."
-	@echo "Backend will run on :8080, Frontend on :5173"
+	@echo "Backend will run on :8081, Frontend on :5173"
 	@trap 'kill 0' EXIT; \
-		(cd backend && $(GO) run ./cmd/airgapper serve --addr :8080) & \
+		(cd backend && AIRGAPPER_PORT=8081 $(GO) run ./cmd/airgapper serve) & \
 		(cd frontend && npm run dev) & \
 		wait
 

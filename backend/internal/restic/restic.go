@@ -17,7 +17,14 @@ type Client struct {
 }
 
 // NewClient creates a new restic client
+// Automatically adds the "rest:" prefix for HTTP/HTTPS URLs
 func NewClient(repoURL, password string) *Client {
+	// Add rest: prefix for HTTP URLs if not already present
+	if (strings.HasPrefix(repoURL, "http://") || strings.HasPrefix(repoURL, "https://")) &&
+		!strings.HasPrefix(repoURL, "rest:") {
+		repoURL = "rest:" + repoURL
+	}
+
 	return &Client{
 		RepoURL:  repoURL,
 		Password: password,

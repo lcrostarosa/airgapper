@@ -25,8 +25,10 @@ services:
       - ./airgapper-config:/home/airgapper/.airgapper
       - ./backup-data:/data
     ports:
-      - "8080:8080"
+      - "8081:8081"
+    environment:
+      - AIRGAPPER_PORT=8081
     depends_on:
       - storage
     # Start the API server
-    command: ["serve", "--addr", ":8080"]
+    command: ["serve"]

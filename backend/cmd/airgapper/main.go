@@ -18,6 +18,7 @@ import (
 	"github.com/lcrostarosa/airgapper/backend/internal/api"
 	"github.com/lcrostarosa/airgapper/backend/internal/config"
 	"github.com/lcrostarosa/airgapper/backend/internal/consent"
+	"github.com/lcrostarosa/airgapper/backend/internal/crypto"
 	"github.com/lcrostarosa/airgapper/backend/internal/restic"
 	"github.com/lcrostarosa/airgapper/backend/internal/scheduler"
 	"github.com/lcrostarosa/airgapper/backend/internal/sss"
@@ -84,12 +85,12 @@ USAGE:
 
 COMMANDS:
   init        Initialize as data owner (creates repo, splits key)
-  join        Join as backup host (receive key share from owner)
+  join        Join as backup host / key holder
   backup      Create a backup (owner only)
   snapshots   List snapshots (requires password)
-  request     Request restore approval from peer
+  request     Request restore approval from peer(s)
   pending     List pending restore requests
-  approve     Approve a restore request (releases key share)
+  approve     Approve a restore request (sign or release share)
   deny        Deny a restore request
   restore     Restore from a snapshot (requires approval)
   status      Show status
@@ -98,20 +99,30 @@ COMMANDS:
   version     Show version
   help        Show this help
 
-WORKFLOW (Owner - Alice):
+MODES:
+  SSS Mode (Legacy):   2-of-2 Shamir's Secret Sharing - both parties hold a share
+  Consensus Mode:      m-of-n Ed25519 signatures - flexible approval requirements
+
+WORKFLOW - SSS MODE (Owner - Alice):
   1. airgapper init --name alice --repo rest:http://bob-nas:8000/alice-backup
   2. Give the displayed share to your peer
   3. airgapper schedule --set "daily" ~/Documents ~/Pictures
-  4. airgapper serve --addr :8080  (runs API + scheduled backups)
+  4. airgapper serve  (runs API + scheduled backups, default port :8081)
   5. When you need to restore:
      airgapper request --snapshot latest --reason "laptop died"
   6. Wait for peer approval, then:
      airgapper restore --request <id> --target /restore/path
 
+WORKFLOW - CONSENSUS MODE (2-of-3):
+  1. airgapper init --name alice --repo rest:... --threshold 2 --holders 3
+  2. Other key holders join with: airgapper join --name bob --repo ... --consensus
+  3. Register key holders via web UI or API
+  4. Restore requires 2 of 3 key holders to sign
+
 WORKFLOW (Host - Bob):
   1. Start restic-rest-server --append-only
   2. airgapper join --name bob --repo rest:http://localhost:8000/alice-backup --share <hex> --index 2
-  3. airgapper serve --addr :8080
+  3. airgapper serve  (default port :8081)
   4. When Alice requests restore:
      airgapper pending
      airgapper approve <request-id>
@@ -151,6 +162,8 @@ func cmdInit(args []string) error {
 
 	// Parse args
 	var name, repoURL string
+	var threshold, holders int
+	var useConsensus bool
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--name", "-n":
@@ -162,6 +175,18 @@ func cmdInit(args []string) error {
 			if i+1 < len(args) {
 				repoURL = args[i+1]
 				i++
+			}
+		case "--threshold", "-t":
+			if i+1 < len(args) {
+				fmt.Sscanf(args[i+1], "%d", &threshold)
+				i++
+				useConsensus = true
+			}
+		case "--holders", "-h":
+			if i+1 < len(args) {
+				fmt.Sscanf(args[i+1], "%d", &holders)
+				i++
+				useConsensus = true
 			}
 		}
 	}
@@ -178,8 +203,17 @@ func cmdInit(args []string) error {
 		return fmt.Errorf("already initialized. Remove ~/.airgapper to reinitialize")
 	}
 
-	fmt.Println("🔐 Airgapper Initialization (Data Owner)")
-	fmt.Println("=========================================")
+	// Use consensus mode if flags provided, otherwise fall back to legacy SSS
+	if useConsensus {
+		return cmdInitConsensus(name, repoURL, threshold, holders)
+	}
+	return cmdInitSSS(name, repoURL)
+}
+
+// cmdInitSSS initializes using legacy 2-of-2 Shamir's Secret Sharing
+func cmdInitSSS(name, repoURL string) error {
+	fmt.Println("🔐 Airgapper Initialization (Data Owner) - SSS Mode")
+	fmt.Println("====================================================")
 	fmt.Printf("Name: %s\n", name)
 	fmt.Printf("Repo: %s\n\n", repoURL)
 
@@ -251,10 +285,114 @@ func cmdInit(args []string) error {
 	return nil
 }
 
+// cmdInitConsensus initializes using m-of-n consensus mode with Ed25519 keys
+func cmdInitConsensus(name, repoURL string, threshold, holders int) error {
+	if threshold < 1 {
+		threshold = 1
+	}
+	if holders < threshold {
+		holders = threshold
+	}
+
+	fmt.Println("🔐 Airgapper Initialization (Data Owner) - Consensus Mode")
+	fmt.Println("==========================================================")
+	fmt.Printf("Name:      %s\n", name)
+	fmt.Printf("Repo:      %s\n", repoURL)
+	fmt.Printf("Consensus: %d-of-%d\n\n", threshold, holders)
+
+	// Generate random repo password
+	passwordBytes := make([]byte, 32)
+	if _, err := rand.Read(passwordBytes); err != nil {
+		return fmt.Errorf("failed to generate password: %w", err)
+	}
+	password := hex.EncodeToString(passwordBytes)
+
+	fmt.Println("1. Generated secure repository password")
+
+	// Generate owner's Ed25519 key pair
+	pubKey, privKey, err := crypto.GenerateKeyPair()
+	if err != nil {
+		return fmt.Errorf("failed to generate key pair: %w", err)
+	}
+	keyID := crypto.KeyID(pubKey)
+
+	fmt.Println("2. Generated Ed25519 key pair for signing")
+	fmt.Printf("   Your Key ID: %s\n", keyID)
+
+	// Initialize restic repo
+	fmt.Println("3. Initializing restic repository...")
+	client := restic.NewClient(repoURL, password)
+	if err := client.Init(); err != nil {
+		return fmt.Errorf("failed to init repo: %w", err)
+	}
+
+	fmt.Println("4. Repository initialized successfully")
+
+	// Create owner key holder
+	ownerHolder := config.KeyHolder{
+		ID:        keyID,
+		Name:      name,
+		PublicKey: pubKey,
+		JoinedAt:  time.Now(),
+		IsOwner:   true,
+	}
+
+	// Save config
+	cfg := &config.Config{
+		Name:       name,
+		Role:       config.RoleOwner,
+		RepoURL:    repoURL,
+		Password:   password, // Owner keeps full password for backups
+		PublicKey:  pubKey,
+		PrivateKey: privKey,
+		Consensus: &config.ConsensusConfig{
+			Threshold:       threshold,
+			TotalKeys:       holders,
+			KeyHolders:      []config.KeyHolder{ownerHolder},
+			RequireApproval: threshold > 1 || holders > 1, // Solo mode (1/1) doesn't require approval by default
+		},
+	}
+
+	if err := cfg.Save(); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	fmt.Println("5. Configuration saved to ~/.airgapper/")
+
+	if holders > 1 {
+		fmt.Println()
+		fmt.Println(strings.Repeat("=", 70))
+		fmt.Println("⚠️  IMPORTANT: Invite other key holders to join")
+		fmt.Println(strings.Repeat("=", 70))
+		fmt.Println()
+		fmt.Printf("You need %d more key holder(s) to reach %d-of-%d consensus.\n", holders-1, threshold, holders)
+		fmt.Println()
+		fmt.Println("They should run:")
+		fmt.Printf("  airgapper join --name <their-name> --repo '%s' --consensus\n", repoURL)
+		fmt.Println()
+		fmt.Println("After they join, you can register them using the web UI or API.")
+		fmt.Println(strings.Repeat("=", 70))
+	} else if threshold == 1 && holders == 1 {
+		fmt.Println()
+		fmt.Println("📝 Solo mode (1/1) enabled - you can restore without external approval.")
+	}
+
+	fmt.Println("\n✅ Initialization complete!")
+	fmt.Println("\nNext steps:")
+	if holders > 1 {
+		fmt.Println("  1. Invite key holders to join")
+	}
+	fmt.Println("  2. Configure backup schedule: airgapper schedule --set daily ~/Documents")
+	fmt.Println("  3. Run: airgapper serve --addr :8080")
+
+	return nil
+}
+
 func cmdJoin(args []string) error {
 	// Parse args
 	var name, repoURL, shareHex string
 	var shareIndex int
+	var useConsensus bool
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--name", "-n":
@@ -277,6 +415,8 @@ func cmdJoin(args []string) error {
 				fmt.Sscanf(args[i+1], "%d", &shareIndex)
 				i++
 			}
+		case "--consensus", "-c":
+			useConsensus = true
 		}
 	}
 
@@ -286,16 +426,22 @@ func cmdJoin(args []string) error {
 	if repoURL == "" {
 		return fmt.Errorf("--repo is required")
 	}
+
+	// Check if already initialized
+	if config.Exists("") {
+		return fmt.Errorf("already initialized. Remove ~/.airgapper to reinitialize")
+	}
+
+	if useConsensus {
+		return cmdJoinConsensus(name, repoURL)
+	}
+
+	// Legacy SSS mode
 	if shareHex == "" {
 		return fmt.Errorf("--share is required (hex-encoded share from owner)")
 	}
 	if shareIndex == 0 {
 		return fmt.Errorf("--index is required (share index, usually 2)")
-	}
-
-	// Check if already initialized
-	if config.Exists("") {
-		return fmt.Errorf("already initialized. Remove ~/.airgapper to reinitialize")
 	}
 
 	// Decode share
@@ -304,8 +450,8 @@ func cmdJoin(args []string) error {
 		return fmt.Errorf("invalid share (must be hex): %w", err)
 	}
 
-	fmt.Println("🔐 Airgapper Join (Backup Host)")
-	fmt.Println("================================")
+	fmt.Println("🔐 Airgapper Join (Backup Host) - SSS Mode")
+	fmt.Println("==========================================")
 	fmt.Printf("Name:  %s\n", name)
 	fmt.Printf("Repo:  %s\n", repoURL)
 	fmt.Printf("Share: %d bytes, index %d\n\n", len(share), shareIndex)
@@ -332,6 +478,65 @@ func cmdJoin(args []string) error {
 	fmt.Println("Commands available to you:")
 	fmt.Println("  airgapper pending  - List pending restore requests")
 	fmt.Println("  airgapper approve  - Approve a restore request")
+	fmt.Println("  airgapper deny     - Deny a restore request")
+	fmt.Println("  airgapper serve    - Run HTTP API for remote management")
+
+	return nil
+}
+
+// cmdJoinConsensus joins using consensus mode with Ed25519 keys
+func cmdJoinConsensus(name, repoURL string) error {
+	fmt.Println("🔐 Airgapper Join (Key Holder) - Consensus Mode")
+	fmt.Println("================================================")
+	fmt.Printf("Name: %s\n", name)
+	fmt.Printf("Repo: %s\n\n", repoURL)
+
+	// Generate Ed25519 key pair
+	pubKey, privKey, err := crypto.GenerateKeyPair()
+	if err != nil {
+		return fmt.Errorf("failed to generate key pair: %w", err)
+	}
+	keyID := crypto.KeyID(pubKey)
+
+	fmt.Println("1. Generated Ed25519 key pair for signing")
+	fmt.Printf("   Your Key ID: %s\n", keyID)
+
+	// Save config
+	cfg := &config.Config{
+		Name:       name,
+		Role:       config.RoleHost,
+		RepoURL:    repoURL,
+		PublicKey:  pubKey,
+		PrivateKey: privKey,
+		// Note: Host does NOT have the password
+	}
+
+	if err := cfg.Save(); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	fmt.Println("2. Configuration saved to ~/.airgapper/")
+
+	fmt.Println()
+	fmt.Println(strings.Repeat("=", 70))
+	fmt.Println("⚠️  IMPORTANT: Register with the vault owner")
+	fmt.Println(strings.Repeat("=", 70))
+	fmt.Println()
+	fmt.Println("Share your public key with the vault owner so they can register you:")
+	fmt.Println()
+	fmt.Printf("  Public Key: %s\n", crypto.EncodePublicKey(pubKey))
+	fmt.Printf("  Key ID:     %s\n", keyID)
+	fmt.Println()
+	fmt.Println("The owner can register you via the web UI or API.")
+	fmt.Println(strings.Repeat("=", 70))
+
+	fmt.Println("\n✅ Joined as key holder!")
+	fmt.Println()
+	fmt.Println("Once the owner registers your key, you can approve restore requests.")
+	fmt.Println()
+	fmt.Println("Commands available to you:")
+	fmt.Println("  airgapper pending  - List pending restore requests")
+	fmt.Println("  airgapper approve  - Sign/approve a restore request")
 	fmt.Println("  airgapper deny     - Deny a restore request")
 	fmt.Println("  airgapper serve    - Run HTTP API for remote management")
 
@@ -546,6 +751,12 @@ func cmdApprove(args []string) error {
 
 	mgr := consent.NewManager(cfg.ConfigDir)
 
+	// Check if we're in consensus mode or legacy SSS mode
+	if cfg.UsesConsensusMode() || cfg.PrivateKey != nil {
+		return cmdApproveConsensus(cfg, mgr, requestID)
+	}
+
+	// Legacy SSS mode
 	// Load our share
 	share, shareIndex, err := cfg.LoadShare()
 	if err != nil {
@@ -563,6 +774,58 @@ func cmdApprove(args []string) error {
 	fmt.Println("\n✅ Request approved!")
 	fmt.Println("Your key share has been released.")
 	fmt.Println("The requester can now restore their data.")
+
+	return nil
+}
+
+// cmdApproveConsensus signs a request using Ed25519
+func cmdApproveConsensus(cfg *config.Config, mgr *consent.Manager, requestID string) error {
+	if cfg.PrivateKey == nil {
+		return fmt.Errorf("no private key found - cannot sign")
+	}
+
+	// Get the request
+	req, err := mgr.GetRequest(requestID)
+	if err != nil {
+		return err
+	}
+
+	keyID := crypto.KeyID(cfg.PublicKey)
+	fmt.Printf("Signing request %s...\n", requestID)
+	fmt.Printf("Your Key ID: %s\n", keyID)
+
+	// Sign the request
+	signature, err := crypto.SignRestoreRequest(
+		cfg.PrivateKey,
+		req.ID,
+		req.Requester,
+		req.SnapshotID,
+		req.Reason,
+		keyID,
+		req.Paths,
+		req.CreatedAt.Unix(),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to sign request: %w", err)
+	}
+
+	// Add signature to request
+	if err := mgr.AddSignature(requestID, keyID, cfg.Name, signature); err != nil {
+		return err
+	}
+
+	// Check approval status
+	current, required, _ := mgr.GetApprovalProgress(requestID)
+
+	fmt.Println("\n✅ Request signed!")
+	fmt.Printf("Approvals: %d of %d required\n", current, required)
+
+	if current >= required {
+		fmt.Println("\n🎉 Request is now fully approved!")
+		fmt.Println("The requester can now restore their data.")
+	} else {
+		fmt.Printf("\n⏳ Waiting for %d more approval(s)...\n", required-current)
+	}
 
 	return nil
 }
@@ -857,11 +1120,23 @@ func cmdSchedule(args []string) error {
 func cmdServe(args []string) error {
 	cfg, err := config.Load("")
 	if err != nil {
-		return err
+		// Allow starting without config for initial UI setup
+		cfg = &config.Config{
+			ConfigDir: config.DefaultConfigDir(),
+		}
 	}
 
 	// Parse args
-	addr := ":8080"
+	// Default port from env variable, fallback to :8081
+	addr := os.Getenv("AIRGAPPER_PORT")
+	if addr == "" {
+		addr = ":8081"
+	}
+	// Ensure it starts with :
+	if addr[0] != ':' {
+		addr = ":" + addr
+	}
+
 	var scheduleOverride, pathsOverride string
 	for i := 0; i < len(args); i++ {
 		switch args[i] {

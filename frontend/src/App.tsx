@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import type { VaultConfig, Step } from "./types";
 import { Welcome } from "./components/Welcome";
 import { InitVault } from "./components/InitVault";
-import { JoinVault } from "./components/JoinVault";
+import { HostSetup } from "./components/HostSetup";
 import { Dashboard } from "./components/Dashboard";
 
 const STORAGE_KEY = "airgapper_vault";
@@ -48,7 +48,7 @@ function App() {
           <InitVault onComplete={handleComplete} onNavigate={setStep} />
         )}
         {step === "join" && (
-          <JoinVault onComplete={handleComplete} onNavigate={setStep} />
+          <HostSetup onComplete={handleComplete} onNavigate={setStep} />
         )}
         {step === "dashboard" && config && (
           <Dashboard config={config} onClear={handleClear} />
