@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/lcrostarosa/airgapper/backend/internal/cli/runner"
 	"github.com/lcrostarosa/airgapper/backend/internal/consent"
 	"github.com/lcrostarosa/airgapper/backend/internal/logging"
 	"github.com/lcrostarosa/airgapper/backend/internal/restic"
@@ -17,7 +18,7 @@ var restoreCmd = &cobra.Command{
 	Long:  `Restore data from a backup snapshot after approval has been granted.`,
 	Example: `  airgapper restore --request abc123 --target /restore/path
   airgapper restore --request abc123 --target ~/recovered`,
-	RunE: runRestore,
+	RunE: runners.Owner().Wrap(runRestore),
 }
 
 func init() {
@@ -29,17 +30,15 @@ func init() {
 	rootCmd.AddCommand(restoreCmd)
 }
 
-func runRestore(cmd *cobra.Command, args []string) error {
-	if err := RequireOwner(); err != nil {
+func runRestore(ctx *runner.CommandContext, cmd *cobra.Command, args []string) error {
+	flags := runner.Flags(cmd)
+	requestID := flags.String("request")
+	target := flags.String("target")
+	if err := flags.Err(); err != nil {
 		return err
 	}
 
-	requestID, _ := cmd.Flags().GetString("request")
-	target, _ := cmd.Flags().GetString("target")
-
-	mgr := consent.NewManager(cfg.ConfigDir)
-
-	req, err := mgr.GetRequest(requestID)
+	req, err := ctx.Consent().GetRequest(requestID)
 	if err != nil {
 		return err
 	}
@@ -53,7 +52,7 @@ func runRestore(cmd *cobra.Command, args []string) error {
 	}
 
 	// Reconstruct password
-	localShare, localIndex, err := cfg.LoadShare()
+	localShare, localIndex, err := ctx.Config.LoadShare()
 	if err != nil {
 		return err
 	}
@@ -79,7 +78,7 @@ func runRestore(cmd *cobra.Command, args []string) error {
 		logging.String("snapshot", req.SnapshotID),
 		logging.String("target", target))
 
-	client := restic.NewClient(cfg.RepoURL, string(password))
+	client := restic.NewClient(ctx.Config.RepoURL, string(password))
 	if err := client.Restore(req.SnapshotID, target); err != nil {
 		return fmt.Errorf("restore failed: %w", err)
 	}

@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/lcrostarosa/airgapper/backend/internal/cli/runner"
 	"github.com/lcrostarosa/airgapper/backend/internal/emergency"
 	"github.com/lcrostarosa/airgapper/backend/internal/logging"
 	"github.com/lcrostarosa/airgapper/backend/internal/sss"
@@ -22,26 +23,22 @@ var heartbeatCmd = &cobra.Command{
 
 This command updates your last activity timestamp, preventing
 the dead man's switch from triggering.`,
-	RunE: runHeartbeat,
+	RunE: runners.Config().Wrap(runHeartbeat),
 }
 
 func init() {
 	rootCmd.AddCommand(heartbeatCmd)
 }
 
-func runHeartbeat(cmd *cobra.Command, args []string) error {
-	if err := RequireConfig(); err != nil {
-		return err
-	}
-
-	dms := cfg.Emergency.GetDeadManSwitch()
+func runHeartbeat(ctx *runner.CommandContext, cmd *cobra.Command, args []string) error {
+	dms := ctx.Config.Emergency.GetDeadManSwitch()
 	if !dms.IsEnabled() {
 		logging.Info("Dead man's switch is not enabled")
 		logging.Info("To enable, reinitialize with: airgapper init --dead-man-switch 180d ...")
 		return nil
 	}
 
-	if err := cfg.RecordActivity(); err != nil {
+	if err := ctx.Config.RecordActivity(); err != nil {
 		return fmt.Errorf("failed to record activity: %w", err)
 	}
 
@@ -62,7 +59,7 @@ var exportShareCmd = &cobra.Command{
 
 Use this when a custodian has lost their share and needs a new copy.`,
 	Example: `  airgapper export-share --index 3`,
-	RunE:    runExportShare,
+	RunE:    runners.OwnerWithPassword().Wrap(runExportShare),
 }
 
 func init() {
@@ -71,26 +68,22 @@ func init() {
 	rootCmd.AddCommand(exportShareCmd)
 }
 
-func runExportShare(cmd *cobra.Command, args []string) error {
-	if err := RequireOwner(); err != nil {
+func runExportShare(ctx *runner.CommandContext, cmd *cobra.Command, args []string) error {
+	flags := runner.Flags(cmd)
+	shareIndex := flags.Int("index")
+	if err := flags.Err(); err != nil {
 		return err
 	}
 
-	if cfg.Password == "" {
-		return fmt.Errorf("no password found - cannot regenerate shares")
-	}
-
-	shareIndex, _ := cmd.Flags().GetInt("index")
-
-	k := cfg.GetRecoveryThreshold()
-	n := cfg.GetRecoveryTotalShares()
+	k := ctx.Config.GetRecoveryThreshold()
+	n := ctx.Config.GetRecoveryTotalShares()
 
 	if shareIndex > n || shareIndex < 1 {
 		return fmt.Errorf("share index %d is out of range (1-%d)", shareIndex, n)
 	}
 
 	// Regenerate shares
-	shares, err := sss.Split([]byte(cfg.Password), k, n)
+	shares, err := sss.Split([]byte(ctx.Config.Password), k, n)
 	if err != nil {
 		return fmt.Errorf("failed to regenerate shares: %w", err)
 	}
@@ -111,7 +104,7 @@ func runExportShare(cmd *cobra.Command, args []string) error {
 	logging.Info("Exporting share",
 		logging.Int("index", shareIndex),
 		logging.String("share", hex.EncodeToString(targetShare.Data)),
-		logging.String("repo", cfg.RepoURL))
+		logging.String("repo", ctx.Config.RepoURL))
 
 	logging.Warnf("This share is part of a %d-of-%d scheme. Any %d shares can decrypt your backups - store securely!", k, n, k)
 
@@ -133,7 +126,7 @@ var overrideSetupCmd = &cobra.Command{
 
 The key will be displayed once and must be stored securely.
 It cannot be recovered if lost.`,
-	RunE: runOverrideSetup,
+	RunE: runners.Config().Wrap(runOverrideSetup),
 }
 
 var overrideAllowCmd = &cobra.Command{
@@ -148,26 +141,26 @@ Available types:
   bypass-dead-man-switch     - Bypass dead man's switch
   force-unlock               - Force unlock any operation`,
 	Args: cobra.ExactArgs(1),
-	RunE: runOverrideAllow,
+	RunE: runners.Config().Wrap(runOverrideAllow),
 }
 
 var overrideDenyCmd = &cobra.Command{
 	Use:   "deny <type>",
 	Short: "Deny a specific override type",
 	Args:  cobra.ExactArgs(1),
-	RunE:  runOverrideDeny,
+	RunE:  runners.Config().Wrap(runOverrideDeny),
 }
 
 var overrideListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List allowed override types",
-	RunE:  runOverrideList,
+	RunE:  runners.Config().Wrap(runOverrideList),
 }
 
 var overrideAuditCmd = &cobra.Command{
 	Use:   "audit",
 	Short: "View override audit log",
-	RunE:  runOverrideAudit,
+	RunE:  runners.Config().Wrap(runOverrideAudit),
 }
 
 func init() {
@@ -179,18 +172,14 @@ func init() {
 	rootCmd.AddCommand(overrideCmd)
 }
 
-func runOverrideSetup(cmd *cobra.Command, args []string) error {
-	if err := RequireConfig(); err != nil {
-		return err
-	}
-
-	if cfg.Emergency.GetOverride().HasKey() {
+func runOverrideSetup(ctx *runner.CommandContext, cmd *cobra.Command, args []string) error {
+	if ctx.Config.Emergency.GetOverride().HasKey() {
 		logging.Warn("Override key already configured")
 		logging.Info("To reset, remove ~/.airgapper/config.json and reinitialize")
 		return nil
 	}
 
-	e := cfg.EnsureEmergency()
+	e := ctx.Config.EnsureEmergency()
 	if e.Override == nil {
 		e.WithOverrides()
 	}
@@ -200,8 +189,8 @@ func runOverrideSetup(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to generate override key: %w", err)
 	}
 
-	if err := cfg.Save(); err != nil {
-		return fmt.Errorf("failed to save config: %w", err)
+	if err := ctx.SaveConfig(); err != nil {
+		return err
 	}
 
 	logging.Info("Override key generated", logging.String("key", key))
@@ -214,36 +203,28 @@ func runOverrideSetup(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func runOverrideAllow(cmd *cobra.Command, args []string) error {
-	if err := RequireConfig(); err != nil {
-		return err
-	}
-
+func runOverrideAllow(ctx *runner.CommandContext, cmd *cobra.Command, args []string) error {
 	overrideType := args[0]
 
-	e := cfg.EnsureEmergency()
+	e := ctx.Config.EnsureEmergency()
 	if e.Override == nil {
 		e.WithOverrides()
 	}
 
 	e.Override.AllowType(emergency.OverrideType(overrideType))
 
-	if err := cfg.Save(); err != nil {
-		return fmt.Errorf("failed to save config: %w", err)
+	if err := ctx.SaveConfig(); err != nil {
+		return err
 	}
 
 	logging.Info("Override type allowed", logging.String("type", overrideType))
 	return nil
 }
 
-func runOverrideDeny(cmd *cobra.Command, args []string) error {
-	if err := RequireConfig(); err != nil {
-		return err
-	}
-
+func runOverrideDeny(ctx *runner.CommandContext, cmd *cobra.Command, args []string) error {
 	overrideType := args[0]
 
-	override := cfg.Emergency.GetOverride()
+	override := ctx.Config.Emergency.GetOverride()
 	if override == nil {
 		logging.Info("No override configuration found")
 		return nil
@@ -251,20 +232,16 @@ func runOverrideDeny(cmd *cobra.Command, args []string) error {
 
 	override.DenyType(emergency.OverrideType(overrideType))
 
-	if err := cfg.Save(); err != nil {
-		return fmt.Errorf("failed to save config: %w", err)
+	if err := ctx.SaveConfig(); err != nil {
+		return err
 	}
 
 	logging.Info("Override type denied", logging.String("type", overrideType))
 	return nil
 }
 
-func runOverrideList(cmd *cobra.Command, args []string) error {
-	if err := RequireConfig(); err != nil {
-		return err
-	}
-
-	o := cfg.Emergency.GetOverride()
+func runOverrideList(ctx *runner.CommandContext, cmd *cobra.Command, args []string) error {
+	o := ctx.Config.Emergency.GetOverride()
 	if !o.IsEnabled() {
 		logging.Info("Override system is not configured")
 		logging.Info("To enable, run: airgapper override setup")
@@ -288,12 +265,8 @@ func runOverrideList(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func runOverrideAudit(cmd *cobra.Command, args []string) error {
-	if err := RequireConfig(); err != nil {
-		return err
-	}
-
-	auditPath := cfg.ConfigDir + "/override-audit.log"
+func runOverrideAudit(ctx *runner.CommandContext, cmd *cobra.Command, args []string) error {
+	auditPath := ctx.Config.ConfigDir + "/override-audit.log"
 	data, err := os.ReadFile(auditPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -329,32 +302,32 @@ Supported providers:
   slack      - Slack webhooks
   discord    - Discord webhooks`,
 	Args: cobra.ExactArgs(1),
-	RunE: runNotifyAdd,
+	RunE: runners.Config().Wrap(runNotifyAdd),
 }
 
 var notifyRemoveCmd = &cobra.Command{
 	Use:   "remove <id>",
 	Short: "Remove a notification provider",
 	Args:  cobra.ExactArgs(1),
-	RunE:  runNotifyRemove,
+	RunE:  runners.Config().Wrap(runNotifyRemove),
 }
 
 var notifyListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List configured notification providers",
-	RunE:  runNotifyList,
+	RunE:  runners.Config().Wrap(runNotifyList),
 }
 
 var notifyTestCmd = &cobra.Command{
 	Use:   "test",
 	Short: "Send a test notification",
-	RunE:  runNotifyTest,
+	RunE:  runners.Config().Wrap(runNotifyTest),
 }
 
 var notifyEventsCmd = &cobra.Command{
 	Use:   "events",
 	Short: "Configure which events trigger notifications",
-	RunE:  runNotifyEvents,
+	RunE:  runners.Config().Wrap(runNotifyEvents),
 }
 
 func init() {
@@ -398,15 +371,11 @@ func init() {
 	rootCmd.AddCommand(notifyCmd)
 }
 
-func runNotifyAdd(cmd *cobra.Command, args []string) error {
-	if err := RequireConfig(); err != nil {
-		return err
-	}
-
+func runNotifyAdd(ctx *runner.CommandContext, cmd *cobra.Command, args []string) error {
 	providerType := args[0]
-	f := cmd.Flags()
-	dryRun, _ := f.GetBool("dry-run")
-	priority, _ := f.GetString("priority")
+	flags := runner.Flags(cmd)
+	dryRun := flags.Bool("dry-run")
+	priority := flags.String("priority")
 
 	// Build settings from flags
 	settings := make(map[string]string)
@@ -417,14 +386,18 @@ func runNotifyAdd(cmd *cobra.Command, args []string) error {
 	}
 
 	for _, key := range settingKeys {
-		val, _ := f.GetString(key)
+		val := flags.String(key)
 		if val != "" {
 			storageKey := strings.ReplaceAll(key, "-", "_")
 			settings[storageKey] = val
 		}
 	}
 
-	e := cfg.EnsureEmergency()
+	if err := flags.Err(); err != nil {
+		return err
+	}
+
+	e := ctx.Config.EnsureEmergency()
 	if e.Notify == nil {
 		e.Notify = &emergency.NotifyConfig{
 			Enabled:   true,
@@ -450,8 +423,8 @@ func runNotifyAdd(cmd *cobra.Command, args []string) error {
 
 	e.Notify.AddProvider(providerID, provider)
 
-	if err := cfg.Save(); err != nil {
-		return fmt.Errorf("failed to save config: %w", err)
+	if err := ctx.SaveConfig(); err != nil {
+		return err
 	}
 
 	logging.Info("Added notification provider",
@@ -460,13 +433,9 @@ func runNotifyAdd(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func runNotifyRemove(cmd *cobra.Command, args []string) error {
-	if err := RequireConfig(); err != nil {
-		return err
-	}
-
+func runNotifyRemove(ctx *runner.CommandContext, cmd *cobra.Command, args []string) error {
 	providerID := args[0]
-	notify := cfg.Emergency.GetNotify()
+	notify := ctx.Config.Emergency.GetNotify()
 
 	if !notify.HasProviders() {
 		return fmt.Errorf("no notification providers configured")
@@ -474,20 +443,16 @@ func runNotifyRemove(cmd *cobra.Command, args []string) error {
 
 	notify.RemoveProvider(providerID)
 
-	if err := cfg.Save(); err != nil {
-		return fmt.Errorf("failed to save config: %w", err)
+	if err := ctx.SaveConfig(); err != nil {
+		return err
 	}
 
 	logging.Info("Removed notification provider", logging.String("id", providerID))
 	return nil
 }
 
-func runNotifyList(cmd *cobra.Command, args []string) error {
-	if err := RequireConfig(); err != nil {
-		return err
-	}
-
-	notify := cfg.Emergency.GetNotify()
+func runNotifyList(ctx *runner.CommandContext, cmd *cobra.Command, args []string) error {
+	notify := ctx.Config.Emergency.GetNotify()
 	if !notify.HasProviders() {
 		logging.Info("No notification providers configured")
 		logging.Info("Add a provider with:")
@@ -511,12 +476,8 @@ func runNotifyList(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func runNotifyTest(cmd *cobra.Command, args []string) error {
-	if err := RequireConfig(); err != nil {
-		return err
-	}
-
-	notify := cfg.Emergency.GetNotify()
+func runNotifyTest(ctx *runner.CommandContext, cmd *cobra.Command, args []string) error {
+	notify := ctx.Config.Emergency.GetNotify()
 	if !notify.HasProviders() {
 		return fmt.Errorf("no notification providers configured")
 	}
@@ -528,12 +489,8 @@ func runNotifyTest(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func runNotifyEvents(cmd *cobra.Command, args []string) error {
-	if err := RequireConfig(); err != nil {
-		return err
-	}
-
-	e := cfg.EnsureEmergency()
+func runNotifyEvents(ctx *runner.CommandContext, cmd *cobra.Command, args []string) error {
+	e := ctx.Config.EnsureEmergency()
 	if e.Notify == nil {
 		e.Notify = &emergency.NotifyConfig{
 			Enabled:   true,
@@ -541,12 +498,12 @@ func runNotifyEvents(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	f := cmd.Flags()
-	all, _ := f.GetBool("all")
-	none, _ := f.GetBool("none")
+	flags := runner.Flags(cmd)
+	all := flags.Bool("all")
+	none := flags.Bool("none")
 
 	// If no flags, show current config
-	if !all && !none && !f.Changed("backup-started") && !f.Changed("backup-completed") {
+	if !all && !none && !flags.Changed("backup-started") && !flags.Changed("backup-completed") {
 		events := e.Notify.Events
 		logging.Info("Notification events",
 			logging.Bool("backupStarted", events.BackupStarted),
@@ -570,31 +527,31 @@ func runNotifyEvents(cmd *cobra.Command, args []string) error {
 		e.Notify.DisableAllEvents()
 	} else {
 		// Set individual events
-		if v, _ := f.GetBool("backup-started"); v {
+		if flags.Bool("backup-started") {
 			e.Notify.Events.BackupStarted = true
 		}
-		if v, _ := f.GetBool("backup-completed"); v {
+		if flags.Bool("backup-completed") {
 			e.Notify.Events.BackupCompleted = true
 		}
-		if v, _ := f.GetBool("backup-failed"); v {
+		if flags.Bool("backup-failed") {
 			e.Notify.Events.BackupFailed = true
 		}
-		if v, _ := f.GetBool("restore-requested"); v {
+		if flags.Bool("restore-requested") {
 			e.Notify.Events.RestoreRequested = true
 		}
-		if v, _ := f.GetBool("restore-approved"); v {
+		if flags.Bool("restore-approved") {
 			e.Notify.Events.RestoreApproved = true
 		}
-		if v, _ := f.GetBool("restore-denied"); v {
+		if flags.Bool("restore-denied") {
 			e.Notify.Events.RestoreDenied = true
 		}
-		if v, _ := f.GetBool("emergency-triggered"); v {
+		if flags.Bool("emergency-triggered") {
 			e.Notify.Events.EmergencyTriggered = true
 		}
 	}
 
-	if err := cfg.Save(); err != nil {
-		return fmt.Errorf("failed to save config: %w", err)
+	if err := ctx.SaveConfig(); err != nil {
+		return err
 	}
 
 	logging.Info("Event notification settings updated")

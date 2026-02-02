@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/lcrostarosa/airgapper/backend/internal/cli/runner"
 	"github.com/lcrostarosa/airgapper/backend/internal/config"
 	"github.com/lcrostarosa/airgapper/backend/internal/crypto"
 	"github.com/lcrostarosa/airgapper/backend/internal/emergency"
@@ -36,7 +37,7 @@ other to your backup host.`,
   # With consensus mode (m-of-n key holders)
   airgapper init --name alice --repo rest:http://bob-nas:8000/backup \
     --threshold 2 --holders 3`,
-	RunE: runInit,
+	RunE: runners.Uninitialized().Wrap(runInit),
 }
 
 func init() {
@@ -65,36 +66,42 @@ func init() {
 	rootCmd.AddCommand(initCmd)
 }
 
-func runInit(cmd *cobra.Command, args []string) error {
+func runInit(ctx *runner.CommandContext, cmd *cobra.Command, args []string) error {
 	if !restic.IsInstalled() {
 		return fmt.Errorf("restic is not installed - please install it first: https://restic.net")
 	}
 
-	name, _ := cmd.Flags().GetString("name")
-	repoURL, _ := cmd.Flags().GetString("repo")
+	flags := runner.Flags(cmd)
+	name := flags.String("name")
+	repoURL := flags.String("repo")
+	threshold := flags.Int("threshold")
+	holders := flags.Int("holders")
+	if err := flags.Err(); err != nil {
+		return err
+	}
 
 	if config.Exists("") {
 		return fmt.Errorf("already initialized. Remove ~/.airgapper to reinitialize")
 	}
 
-	threshold, _ := cmd.Flags().GetInt("threshold")
-	holders, _ := cmd.Flags().GetInt("holders")
-
 	if threshold > 0 || holders > 0 {
-		return initConsensus(cmd, name, repoURL)
+		return initConsensus(cmd, name, repoURL, threshold, holders)
 	}
 
 	return initSSS(cmd, name, repoURL)
 }
 
 func initSSS(cmd *cobra.Command, name, repoURL string) error {
-	f := cmd.Flags()
-	recoveryShares, _ := f.GetInt("recovery-shares")
-	recoveryThreshold, _ := f.GetInt("recovery-threshold")
-	custodians, _ := f.GetStringSlice("custodian")
-	deadManSwitch, _ := f.GetString("dead-man-switch")
-	enableOverrides, _ := f.GetBool("enable-overrides")
-	escalationContacts, _ := f.GetStringSlice("escalation-contact")
+	flags := runner.Flags(cmd)
+	recoveryShares := flags.Int("recovery-shares")
+	recoveryThreshold := flags.Int("recovery-threshold")
+	custodians := flags.StringSlice("custodian")
+	deadManSwitch := flags.String("dead-man-switch")
+	enableOverrides := flags.Bool("enable-overrides")
+	escalationContacts := flags.StringSlice("escalation-contact")
+	if err := flags.Err(); err != nil {
+		return err
+	}
 
 	deadManDays := parseDays(deadManSwitch)
 
@@ -177,11 +184,7 @@ func initSSS(cmd *cobra.Command, name, repoURL string) error {
 	return nil
 }
 
-func initConsensus(cmd *cobra.Command, name, repoURL string) error {
-	f := cmd.Flags()
-	threshold, _ := f.GetInt("threshold")
-	holders, _ := f.GetInt("holders")
-
+func initConsensus(cmd *cobra.Command, name, repoURL string, threshold, holders int) error {
 	if threshold < 1 {
 		threshold = 1
 	}

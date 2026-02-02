@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/lcrostarosa/airgapper/backend/internal/cli/runner"
 	"github.com/lcrostarosa/airgapper/backend/internal/config"
 	"github.com/lcrostarosa/airgapper/backend/internal/crypto"
 	"github.com/lcrostarosa/airgapper/backend/internal/logging"
@@ -24,7 +25,7 @@ In consensus mode, you generate your own key pair and register with the owner.`,
 
   # Join as key holder (consensus mode)
   airgapper join --name bob --repo rest:http://localhost:8000/backup --consensus`,
-	RunE: runJoin,
+	RunE: runners.Uninitialized().Wrap(runJoin),
 }
 
 func init() {
@@ -45,15 +46,19 @@ func init() {
 	rootCmd.AddCommand(joinCmd)
 }
 
-func runJoin(cmd *cobra.Command, args []string) error {
-	name, _ := cmd.Flags().GetString("name")
-	repoURL, _ := cmd.Flags().GetString("repo")
+func runJoin(ctx *runner.CommandContext, cmd *cobra.Command, args []string) error {
+	flags := runner.Flags(cmd)
+	name := flags.String("name")
+	repoURL := flags.String("repo")
+	consensus := flags.Bool("consensus")
+	if err := flags.Err(); err != nil {
+		return err
+	}
 
 	if config.Exists("") {
 		return fmt.Errorf("already initialized. Remove ~/.airgapper to reinitialize")
 	}
 
-	consensus, _ := cmd.Flags().GetBool("consensus")
 	if consensus {
 		return joinConsensus(name, repoURL)
 	}
@@ -62,8 +67,12 @@ func runJoin(cmd *cobra.Command, args []string) error {
 }
 
 func joinSSS(cmd *cobra.Command, name, repoURL string) error {
-	shareHex, _ := cmd.Flags().GetString("share")
-	shareIndex, _ := cmd.Flags().GetInt("index")
+	flags := runner.Flags(cmd)
+	shareHex := flags.String("share")
+	shareIndex := flags.Int("index")
+	if err := flags.Err(); err != nil {
+		return err
+	}
 
 	if shareHex == "" {
 		return fmt.Errorf("--share is required (hex-encoded share from owner)")

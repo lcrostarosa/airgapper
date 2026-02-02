@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/lcrostarosa/airgapper/backend/internal/cli/runner"
 	"github.com/lcrostarosa/airgapper/backend/internal/consent"
 	"github.com/lcrostarosa/airgapper/backend/internal/crypto"
 	"github.com/lcrostarosa/airgapper/backend/internal/logging"
@@ -21,7 +22,7 @@ var requestCmd = &cobra.Command{
 	Long:  `Create a new restore request that must be approved by your peer(s).`,
 	Example: `  airgapper request --snapshot latest --reason "Need to recover deleted files"
   airgapper request --snapshot abc123 --reason "Testing restore" --peer http://bob:8081`,
-	RunE: runRequest,
+	RunE: runners.Owner().Wrap(runRequest),
 }
 
 func init() {
@@ -33,17 +34,16 @@ func init() {
 	rootCmd.AddCommand(requestCmd)
 }
 
-func runRequest(cmd *cobra.Command, args []string) error {
-	if err := RequireOwner(); err != nil {
+func runRequest(ctx *runner.CommandContext, cmd *cobra.Command, args []string) error {
+	flags := runner.Flags(cmd)
+	snapshotID := flags.String("snapshot")
+	reason := flags.String("reason")
+	peerAddr := flags.String("peer")
+	if err := flags.Err(); err != nil {
 		return err
 	}
 
-	snapshotID, _ := cmd.Flags().GetString("snapshot")
-	reason, _ := cmd.Flags().GetString("reason")
-	peerAddr, _ := cmd.Flags().GetString("peer")
-
-	mgr := consent.NewManager(cfg.ConfigDir)
-	req, err := mgr.CreateRequest(cfg.Name, snapshotID, reason, nil)
+	req, err := ctx.Consent().CreateRequest(ctx.Config.Name, snapshotID, reason, nil)
 	if err != nil {
 		return err
 	}
@@ -55,8 +55,8 @@ func runRequest(cmd *cobra.Command, args []string) error {
 		logging.String("expires", req.ExpiresAt.Format("2006-01-02 15:04:05")))
 
 	// Notify peer if address provided
-	if peerAddr == "" && cfg.Peer != nil && cfg.Peer.Address != "" {
-		peerAddr = cfg.Peer.Address
+	if peerAddr == "" && ctx.Config.Peer != nil && ctx.Config.Peer.Address != "" {
+		peerAddr = ctx.Config.Peer.Address
 	}
 
 	if peerAddr != "" {
@@ -101,20 +101,15 @@ var pendingCmd = &cobra.Command{
 	Use:   "pending",
 	Short: "List pending restore requests",
 	Long:  `Show all restore requests waiting for approval.`,
-	RunE:  runPending,
+	RunE:  runners.Config().Wrap(runPending),
 }
 
 func init() {
 	rootCmd.AddCommand(pendingCmd)
 }
 
-func runPending(cmd *cobra.Command, args []string) error {
-	if err := RequireConfig(); err != nil {
-		return err
-	}
-
-	mgr := consent.NewManager(cfg.ConfigDir)
-	requests, err := mgr.ListPending()
+func runPending(ctx *runner.CommandContext, cmd *cobra.Command, args []string) error {
+	requests, err := ctx.Consent().ListPending()
 	if err != nil {
 		return err
 	}
@@ -147,30 +142,26 @@ var approveCmd = &cobra.Command{
 	Short: "Approve a restore request (sign or release share)",
 	Long:  `Approve a pending restore request by signing it or releasing your key share.`,
 	Args:  cobra.ExactArgs(1),
-	RunE:  runApprove,
+	RunE:  runners.Config().Wrap(runApprove),
 }
 
 func init() {
 	rootCmd.AddCommand(approveCmd)
 }
 
-func runApprove(cmd *cobra.Command, args []string) error {
-	if err := RequireConfig(); err != nil {
-		return err
-	}
-
+func runApprove(ctx *runner.CommandContext, cmd *cobra.Command, args []string) error {
 	requestID := args[0]
-	mgr := consent.NewManager(cfg.ConfigDir)
+	mgr := ctx.Consent()
 
-	if cfg.UsesConsensusMode() || cfg.PrivateKey != nil {
-		return approveConsensus(mgr, requestID)
+	if ctx.Config.UsesConsensusMode() || ctx.Config.PrivateKey != nil {
+		return approveConsensus(ctx, mgr, requestID)
 	}
 
-	return approveSSS(mgr, requestID)
+	return approveSSS(ctx, mgr, requestID)
 }
 
-func approveSSS(mgr *consent.Manager, requestID string) error {
-	share, shareIndex, err := cfg.LoadShare()
+func approveSSS(ctx *runner.CommandContext, mgr *consent.Manager, requestID string) error {
+	share, shareIndex, err := ctx.Config.LoadShare()
 	if err != nil {
 		return fmt.Errorf("failed to load share: %w", err)
 	}
@@ -179,7 +170,7 @@ func approveSSS(mgr *consent.Manager, requestID string) error {
 		logging.String("requestID", requestID),
 		logging.Int("shareIndex", int(shareIndex)))
 
-	if err := mgr.Approve(requestID, cfg.Name, share); err != nil {
+	if err := mgr.Approve(requestID, ctx.Config.Name, share); err != nil {
 		return err
 	}
 
@@ -189,8 +180,8 @@ func approveSSS(mgr *consent.Manager, requestID string) error {
 	return nil
 }
 
-func approveConsensus(mgr *consent.Manager, requestID string) error {
-	if cfg.PrivateKey == nil {
+func approveConsensus(ctx *runner.CommandContext, mgr *consent.Manager, requestID string) error {
+	if ctx.Config.PrivateKey == nil {
 		return fmt.Errorf("no private key found - cannot sign")
 	}
 
@@ -199,13 +190,13 @@ func approveConsensus(mgr *consent.Manager, requestID string) error {
 		return err
 	}
 
-	keyID := crypto.KeyID(cfg.PublicKey)
+	keyID := crypto.KeyID(ctx.Config.PublicKey)
 	logging.Info("Signing request",
 		logging.String("requestID", requestID),
 		logging.String("keyID", keyID))
 
 	signature, err := crypto.SignRestoreRequest(
-		cfg.PrivateKey,
+		ctx.Config.PrivateKey,
 		req.ID,
 		req.Requester,
 		req.SnapshotID,
@@ -218,7 +209,7 @@ func approveConsensus(mgr *consent.Manager, requestID string) error {
 		return fmt.Errorf("failed to sign request: %w", err)
 	}
 
-	if err := mgr.AddSignature(requestID, keyID, cfg.Name, signature); err != nil {
+	if err := mgr.AddSignature(requestID, keyID, ctx.Config.Name, signature); err != nil {
 		return err
 	}
 
@@ -244,22 +235,17 @@ var denyCmd = &cobra.Command{
 	Short: "Deny a restore request",
 	Long:  `Deny a pending restore request.`,
 	Args:  cobra.ExactArgs(1),
-	RunE:  runDeny,
+	RunE:  runners.Config().Wrap(runDeny),
 }
 
 func init() {
 	rootCmd.AddCommand(denyCmd)
 }
 
-func runDeny(cmd *cobra.Command, args []string) error {
-	if err := RequireConfig(); err != nil {
-		return err
-	}
-
+func runDeny(ctx *runner.CommandContext, cmd *cobra.Command, args []string) error {
 	requestID := args[0]
-	mgr := consent.NewManager(cfg.ConfigDir)
 
-	if err := mgr.Deny(requestID, cfg.Name); err != nil {
+	if err := ctx.Consent().Deny(requestID, ctx.Config.Name); err != nil {
 		return err
 	}
 

@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/lcrostarosa/airgapper/backend/internal/cli/runner"
 	"github.com/lcrostarosa/airgapper/backend/internal/logging"
 	"github.com/lcrostarosa/airgapper/backend/internal/scheduler"
 )
@@ -29,7 +30,7 @@ var scheduleCmd = &cobra.Command{
 
   # Clear schedule
   airgapper schedule --clear`,
-	RunE: runSchedule,
+	RunE: runners.Owner().Wrap(runSchedule),
 }
 
 func init() {
@@ -39,53 +40,54 @@ func init() {
 	rootCmd.AddCommand(scheduleCmd)
 }
 
-func runSchedule(cmd *cobra.Command, args []string) error {
-	if err := RequireOwner(); err != nil {
+func runSchedule(ctx *runner.CommandContext, cmd *cobra.Command, args []string) error {
+	flags := runner.Flags(cmd)
+	clear := flags.Bool("clear")
+	setSchedule := flags.String("set")
+	if err := flags.Err(); err != nil {
 		return err
 	}
 
-	clear, _ := cmd.Flags().GetBool("clear")
 	if clear {
-		return clearSchedule()
+		return clearSchedule(ctx)
 	}
 
-	setSchedule, _ := cmd.Flags().GetString("set")
 	if setSchedule != "" {
-		return setBackupSchedule(setSchedule, args)
+		return setBackupSchedule(ctx, setSchedule, args)
 	}
 
-	return showSchedule()
+	return showSchedule(ctx)
 }
 
-func clearSchedule() error {
-	cfg.BackupSchedule = ""
-	cfg.BackupPaths = nil
-	if err := cfg.Save(); err != nil {
+func clearSchedule(ctx *runner.CommandContext) error {
+	ctx.Config.BackupSchedule = ""
+	ctx.Config.BackupPaths = nil
+	if err := ctx.SaveConfig(); err != nil {
 		return err
 	}
 	logging.Info("Schedule cleared")
 	return nil
 }
 
-func setBackupSchedule(scheduleExpr string, paths []string) error {
+func setBackupSchedule(ctx *runner.CommandContext, scheduleExpr string, paths []string) error {
 	sched, err := scheduler.ParseSchedule(scheduleExpr)
 	if err != nil {
 		return fmt.Errorf("invalid schedule: %w", err)
 	}
 
-	cfg.BackupSchedule = scheduleExpr
+	ctx.Config.BackupSchedule = scheduleExpr
 	if len(paths) > 0 {
-		cfg.BackupPaths = paths
+		ctx.Config.BackupPaths = paths
 	}
 
-	if err := cfg.Save(); err != nil {
+	if err := ctx.SaveConfig(); err != nil {
 		return err
 	}
 
 	nextRun := sched.NextRun(time.Now())
 	logging.Info("Schedule configured",
-		logging.String("schedule", cfg.BackupSchedule),
-		logging.String("paths", strings.Join(cfg.BackupPaths, ", ")),
+		logging.String("schedule", ctx.Config.BackupSchedule),
+		logging.String("paths", strings.Join(ctx.Config.BackupPaths, ", ")),
 		logging.String("nextRun", nextRun.Format("2006-01-02 15:04:05")),
 		logging.String("in", scheduler.FormatDuration(time.Until(nextRun))))
 
@@ -93,20 +95,20 @@ func setBackupSchedule(scheduleExpr string, paths []string) error {
 	return nil
 }
 
-func showSchedule() error {
+func showSchedule(ctx *runner.CommandContext) error {
 	logging.Info("Backup schedule")
 
-	if cfg.BackupSchedule == "" {
+	if ctx.Config.BackupSchedule == "" {
 		logging.Info("No schedule configured")
 		logging.Info("Set a schedule with: airgapper schedule --set daily ~/Documents")
 		return nil
 	}
 
 	logging.Info("Current schedule",
-		logging.String("schedule", cfg.BackupSchedule),
-		logging.String("paths", strings.Join(cfg.BackupPaths, ", ")))
+		logging.String("schedule", ctx.Config.BackupSchedule),
+		logging.String("paths", strings.Join(ctx.Config.BackupPaths, ", ")))
 
-	sched, err := scheduler.ParseSchedule(cfg.BackupSchedule)
+	sched, err := scheduler.ParseSchedule(ctx.Config.BackupSchedule)
 	if err == nil {
 		nextRun := sched.NextRun(time.Now())
 		logging.Infof("Next run: %s (in %s)", nextRun.Format("2006-01-02 15:04:05"), scheduler.FormatDuration(time.Until(nextRun)))

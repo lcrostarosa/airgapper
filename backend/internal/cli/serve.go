@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/lcrostarosa/airgapper/backend/internal/api"
+	"github.com/lcrostarosa/airgapper/backend/internal/cli/runner"
 	"github.com/lcrostarosa/airgapper/backend/internal/config"
 	"github.com/lcrostarosa/airgapper/backend/internal/logging"
 	"github.com/lcrostarosa/airgapper/backend/internal/restic"
@@ -31,7 +32,7 @@ scheduled backups will run automatically while the server is running.`,
 
   # Override schedule for this session
   airgapper serve --schedule daily --paths ~/Documents,~/Photos`,
-	RunE: runServe,
+	RunE: runners.Uninitialized().Wrap(runServe),
 }
 
 func init() {
@@ -42,8 +43,8 @@ func init() {
 	rootCmd.AddCommand(serveCmd)
 }
 
-func runServe(cmd *cobra.Command, args []string) error {
-	serveCfg := cfg
+func runServe(ctx *runner.CommandContext, cmd *cobra.Command, args []string) error {
+	serveCfg := ctx.Config
 	if serveCfg == nil {
 		serveCfg = &config.Config{
 			ConfigDir: config.DefaultConfigDir(),
@@ -55,14 +56,16 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	printServerInfo(serveCfg, addr)
 
-	server := api.NewServer(serveCfg, addr)
-	sched := setupScheduler(cmd, serveCfg, server)
+	apiServer := api.NewServer(serveCfg, addr)
+	sched := setupScheduler(cmd, serveCfg, apiServer)
 
-	return runServer(server, sched)
+	return runServer(apiServer, sched)
 }
 
 func resolveAddr(cmd *cobra.Command) string {
-	addr, _ := cmd.Flags().GetString("addr")
+	flags := runner.Flags(cmd)
+	addr := flags.String("addr")
+
 	if addr != "" {
 		return addr
 	}
@@ -93,7 +96,7 @@ func printServerInfo(serveCfg *config.Config, addr string) {
 	logging.Info("  POST /api/requests/{id}/deny    - Deny request")
 }
 
-func setupScheduler(cmd *cobra.Command, serveCfg *config.Config, server *api.Server) *scheduler.Scheduler {
+func setupScheduler(cmd *cobra.Command, serveCfg *config.Config, apiServer *api.Server) *scheduler.Scheduler {
 	if !serveCfg.IsOwner() {
 		return nil
 	}
@@ -102,10 +105,11 @@ func setupScheduler(cmd *cobra.Command, serveCfg *config.Config, server *api.Ser
 	backupPaths := serveCfg.BackupPaths
 
 	// Allow overrides from flags
-	if override, _ := cmd.Flags().GetString("schedule"); override != "" {
+	flags := runner.Flags(cmd)
+	if override := flags.String("schedule"); flags.Changed("schedule") && override != "" {
 		scheduleExpr = override
 	}
-	if override, _ := cmd.Flags().GetString("paths"); override != "" {
+	if override := flags.String("paths"); flags.Changed("paths") && override != "" {
 		backupPaths = strings.Split(override, ",")
 	}
 
@@ -132,7 +136,7 @@ func setupScheduler(cmd *cobra.Command, serveCfg *config.Config, server *api.Ser
 	}
 
 	sched := scheduler.NewScheduler(parsedSched, backupFunc)
-	server.SetScheduler(sched)
+	apiServer.SetScheduler(sched)
 
 	nextRun := parsedSched.NextRun(time.Now())
 	logging.Info("Scheduled backups enabled",

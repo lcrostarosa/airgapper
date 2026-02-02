@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/lcrostarosa/airgapper/backend/internal/api"
+	"github.com/lcrostarosa/airgapper/backend/internal/cli/runner"
 	"github.com/lcrostarosa/airgapper/backend/internal/config"
 	"github.com/lcrostarosa/airgapper/backend/internal/logging"
 	"github.com/lcrostarosa/airgapper/backend/internal/server"
@@ -38,14 +39,14 @@ separate from the main Airgapper API server.`,
 
   # Start on custom address
   airgapper storage serve --path /data/backups --addr :8000`,
-	RunE: runStorageServe,
+	RunE: runners.Uninitialized().Wrap(runStorageServe),
 }
 
 var storageStatusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show storage server status",
 	Long:  `Display the current status of the storage server including disk usage, request counts, and policy information.`,
-	RunE:  runStorageStatus,
+	RunE:  runners.Uninitialized().Wrap(runStorageStatus),
 }
 
 func init() {
@@ -68,12 +69,16 @@ func init() {
 	rootCmd.AddCommand(storageCmd)
 }
 
-func runStorageServe(cmd *cobra.Command, args []string) error {
-	path, _ := cmd.Flags().GetString("path")
-	addr, _ := cmd.Flags().GetString("addr")
-	appendOnly, _ := cmd.Flags().GetBool("append-only")
-	quotaStr, _ := cmd.Flags().GetString("quota")
-	enableIntegrity, _ := cmd.Flags().GetBool("integrity")
+func runStorageServe(ctx *runner.CommandContext, cmd *cobra.Command, args []string) error {
+	flags := runner.Flags(cmd)
+	path := flags.String("path")
+	addr := flags.String("addr")
+	appendOnly := flags.Bool("append-only")
+	quotaStr := flags.String("quota")
+	enableIntegrity := flags.Bool("integrity")
+	if err := flags.Err(); err != nil {
+		return err
+	}
 
 	// Parse quota
 	var quotaBytes int64
@@ -172,17 +177,17 @@ func runStorageServe(cmd *cobra.Command, args []string) error {
 	})
 }
 
-func runStorageStatus(cmd *cobra.Command, args []string) error {
-	if cfg == nil || cfg.StoragePath == "" {
+func runStorageStatus(ctx *runner.CommandContext, cmd *cobra.Command, args []string) error {
+	if ctx.Config == nil || ctx.Config.StoragePath == "" {
 		logging.Info("Storage not configured")
 		return nil
 	}
 
 	// Initialize storage to get status
 	storageCfg := &config.Config{
-		StoragePath:       cfg.StoragePath,
-		StorageAppendOnly: cfg.StorageAppendOnly,
-		StorageQuotaBytes: cfg.StorageQuotaBytes,
+		StoragePath:       ctx.Config.StoragePath,
+		StorageAppendOnly: ctx.Config.StorageAppendOnly,
+		StorageQuotaBytes: ctx.Config.StorageQuotaBytes,
 	}
 
 	opts, err := api.InitStorageComponents(storageCfg)

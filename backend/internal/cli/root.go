@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/lcrostarosa/airgapper/backend/internal/cli/runner"
 	"github.com/lcrostarosa/airgapper/backend/internal/config"
 	"github.com/lcrostarosa/airgapper/backend/internal/logging"
 )
@@ -21,7 +22,17 @@ var (
 	// App state
 	cfg    *config.Config
 	cfgErr error
+
+	// runners is the builder for creating command runners with interceptors.
+	// It is initialized with the configProvider function.
+	runners = runner.NewBuilder(configProvider)
 )
+
+// configProvider returns the current config and any load error.
+// This is used by the runner package to inject config into command handlers.
+func configProvider() (*config.Config, error) {
+	return cfg, cfgErr
+}
 
 // resolveVersion returns the version from ldflags, build info, or a default
 func resolveVersion() string {

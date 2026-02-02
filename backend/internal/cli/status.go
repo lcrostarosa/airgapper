@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/lcrostarosa/airgapper/backend/internal/consent"
+	"github.com/lcrostarosa/airgapper/backend/internal/cli/runner"
 	"github.com/lcrostarosa/airgapper/backend/internal/logging"
 	"github.com/lcrostarosa/airgapper/backend/internal/restic"
 )
@@ -14,18 +14,18 @@ var statusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show status",
 	Long:  `Display the current Airgapper configuration and status.`,
-	RunE:  runStatus,
+	RunE:  runners.Uninitialized().Wrap(runStatus),
 }
 
 func init() {
 	rootCmd.AddCommand(statusCmd)
 }
 
-func runStatus(cmd *cobra.Command, args []string) error {
-	if cfg == nil {
+func runStatus(ctx *runner.CommandContext, cmd *cobra.Command, args []string) error {
+	if ctx.Config == nil {
 		return showUninitialized()
 	}
-	return showStatus()
+	return showStatus(ctx)
 }
 
 func showUninitialized() error {
@@ -36,21 +36,21 @@ func showUninitialized() error {
 	return nil
 }
 
-func showStatus() error {
+func showStatus(ctx *runner.CommandContext) error {
 	logging.Info("Airgapper status",
-		logging.String("name", cfg.Name),
-		logging.String("role", string(cfg.Role)),
-		logging.String("repository", cfg.RepoURL))
+		logging.String("name", ctx.Config.Name),
+		logging.String("role", string(ctx.Config.Role)),
+		logging.String("repository", ctx.Config.RepoURL))
 
 	// Key info
-	if cfg.LocalShare != nil {
-		logging.Infof("Key share: Index %d (%d bytes)", cfg.ShareIndex, len(cfg.LocalShare))
+	if ctx.Config.LocalShare != nil {
+		logging.Infof("Key share: Index %d (%d bytes)", ctx.Config.ShareIndex, len(ctx.Config.LocalShare))
 	} else {
 		logging.Info("Key share: Not configured")
 	}
 
-	if cfg.IsOwner() {
-		if cfg.Password != "" {
+	if ctx.Config.IsOwner() {
+		if ctx.Config.Password != "" {
 			logging.Info("Password: Stored (can backup)")
 		} else {
 			logging.Warn("Password: Missing")
@@ -58,10 +58,10 @@ func showStatus() error {
 	}
 
 	// Peer info
-	if cfg.Peer != nil {
-		peerInfo := cfg.Peer.Name
-		if cfg.Peer.Address != "" {
-			peerInfo += " (" + cfg.Peer.Address + ")"
+	if ctx.Config.Peer != nil {
+		peerInfo := ctx.Config.Peer.Name
+		if ctx.Config.Peer.Address != "" {
+			peerInfo += " (" + ctx.Config.Peer.Address + ")"
 		}
 		logging.Info("Peer", logging.String("peer", peerInfo))
 	} else {
@@ -69,10 +69,10 @@ func showStatus() error {
 	}
 
 	// Schedule
-	if cfg.BackupSchedule != "" {
+	if ctx.Config.BackupSchedule != "" {
 		logging.Info("Schedule",
-			logging.String("schedule", cfg.BackupSchedule),
-			logging.String("paths", strings.Join(cfg.BackupPaths, ", ")))
+			logging.String("schedule", ctx.Config.BackupSchedule),
+			logging.String("paths", strings.Join(ctx.Config.BackupPaths, ", ")))
 	} else {
 		logging.Info("Schedule: Not configured")
 	}
@@ -86,35 +86,34 @@ func showStatus() error {
 	}
 
 	// Pending requests
-	mgr := consent.NewManager(cfg.ConfigDir)
-	pending, _ := mgr.ListPending()
+	pending, _ := ctx.Consent().ListPending()
 	logging.Info("Pending restore requests", logging.Int("count", len(pending)))
 
 	// Emergency features
-	if cfg.HasEmergencyConfig() {
+	if ctx.Config.HasEmergencyConfig() {
 		logging.Info("Emergency features:")
 
-		if cfg.Emergency.Recovery != nil && cfg.Emergency.Recovery.Enabled {
-			logging.Infof("  Recovery shares: %d-of-%d", cfg.Emergency.Recovery.Threshold, cfg.Emergency.Recovery.TotalShares)
-			if len(cfg.Emergency.Recovery.Custodians) > 0 {
-				logging.Infof("  Custodians: %d configured", len(cfg.Emergency.Recovery.Custodians))
+		if ctx.Config.Emergency.Recovery != nil && ctx.Config.Emergency.Recovery.Enabled {
+			logging.Infof("  Recovery shares: %d-of-%d", ctx.Config.Emergency.Recovery.Threshold, ctx.Config.Emergency.Recovery.TotalShares)
+			if len(ctx.Config.Emergency.Recovery.Custodians) > 0 {
+				logging.Infof("  Custodians: %d configured", len(ctx.Config.Emergency.Recovery.Custodians))
 			}
 		}
 
-		if cfg.Emergency.DeadManSwitch != nil && cfg.Emergency.DeadManSwitch.Enabled {
-			dms := cfg.Emergency.DeadManSwitch
+		if ctx.Config.Emergency.DeadManSwitch != nil && ctx.Config.Emergency.DeadManSwitch.Enabled {
+			dms := ctx.Config.Emergency.DeadManSwitch
 			logging.Infof("  Dead man's switch: %d days (triggers in %d days)", dms.InactivityDays, dms.DaysUntilTrigger())
 			if dms.IsWarning() {
 				logging.Warn("  WARNING: Approaching inactivity threshold!")
 			}
 		}
 
-		if cfg.Emergency.Override != nil && cfg.Emergency.Override.Enabled {
-			logging.Infof("  Override key: configured (%d allowed types)", len(cfg.Emergency.Override.AllowedTypes))
+		if ctx.Config.Emergency.Override != nil && ctx.Config.Emergency.Override.Enabled {
+			logging.Infof("  Override key: configured (%d allowed types)", len(ctx.Config.Emergency.Override.AllowedTypes))
 		}
 
-		if cfg.Emergency.Notify != nil && cfg.Emergency.Notify.Enabled {
-			logging.Infof("  Notifications: %d providers configured", len(cfg.Emergency.Notify.Providers))
+		if ctx.Config.Emergency.Notify != nil && ctx.Config.Emergency.Notify.Enabled {
+			logging.Infof("  Notifications: %d providers configured", len(ctx.Config.Emergency.Notify.Providers))
 		}
 	}
 
