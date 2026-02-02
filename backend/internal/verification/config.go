@@ -13,10 +13,15 @@ type VerificationSystemConfig struct {
 	Witness    *WitnessConfig     `json:"witness,omitempty"`
 
 	// Additional defenses
-	Quarantine *QuarantineConfig         `json:"quarantine,omitempty"`
-	RateLimit  *RateLimitConfig          `json:"rate_limit,omitempty"`
-	Anomaly    *AnomalyConfig            `json:"anomaly,omitempty"`
-	Immutable  *ImmutableStorageConfig   `json:"immutable,omitempty"`
+	Quarantine *QuarantineConfig       `json:"quarantine,omitempty"`
+	RateLimit  *RateLimitConfig        `json:"rate_limit,omitempty"`
+	Anomaly    *AnomalyConfig          `json:"anomaly,omitempty"`
+	Immutable  *ImmutableStorageConfig `json:"immutable,omitempty"`
+
+	// Advanced detection features
+	Canary    *CanaryConfig    `json:"canary,omitempty"`
+	Heartbeat *HeartbeatConfig `json:"heartbeat,omitempty"`
+	POR       *PORConfig       `json:"por,omitempty"`
 }
 
 // AuditChainConfig configures the cryptographic audit chain feature.
@@ -61,6 +66,10 @@ type WitnessProvider struct {
 	Headers  map[string]string `json:"headers,omitempty"`  // Custom headers
 	Enabled  bool              `json:"enabled"`
 }
+
+// Note: CanaryConfig is defined in canary.go
+// Note: HeartbeatConfig is defined in heartbeat.go
+// Note: PORConfig is defined in por.go
 
 // DefaultAuditChainConfig returns sensible defaults for audit chain.
 func DefaultAuditChainConfig() *AuditChainConfig {
@@ -108,6 +117,26 @@ func DefaultVerificationConfig() *VerificationSystemConfig {
 		Challenge:  DefaultChallengeConfig(),
 		Tickets:    DefaultTicketConfig(),
 		Witness:    DefaultWitnessConfig(),
+		// Advanced detection features (disabled by default for backward compatibility)
+		Canary:    nil,
+		Heartbeat: nil,
+		POR:       nil,
+	}
+}
+
+// DefaultAdvancedVerificationConfig returns a verification config with
+// all features enabled including advanced detection mechanisms.
+func DefaultAdvancedVerificationConfig() *VerificationSystemConfig {
+	return &VerificationSystemConfig{
+		Enabled:    true,
+		AuditChain: DefaultAuditChainConfig(),
+		Challenge:  DefaultChallengeConfig(),
+		Tickets:    DefaultTicketConfig(),
+		Witness:    DefaultWitnessConfig(),
+		// Advanced detection features
+		Canary:    DefaultCanaryConfig(),
+		Heartbeat: DefaultHeartbeatConfig(),
+		POR:       DefaultPORConfig(),
 	}
 }
 
@@ -149,4 +178,19 @@ func (c *VerificationSystemConfig) IsAnomalyDetectionEnabled() bool {
 // IsImmutableStorageEnabled returns true if immutable storage is configured and enabled.
 func (c *VerificationSystemConfig) IsImmutableStorageEnabled() bool {
 	return c != nil && c.Enabled && c.Immutable != nil && c.Immutable.Enabled
+}
+
+// IsCanaryEnabled returns true if canary detection is configured and enabled.
+func (c *VerificationSystemConfig) IsCanaryEnabled() bool {
+	return c != nil && c.Enabled && c.Canary != nil && c.Canary.Enabled
+}
+
+// IsHeartbeatEnabled returns true if heartbeat monitoring is configured and enabled.
+func (c *VerificationSystemConfig) IsHeartbeatEnabled() bool {
+	return c != nil && c.Enabled && c.Heartbeat != nil && c.Heartbeat.Enabled
+}
+
+// IsPOREnabled returns true if Proof of Retrievability is configured and enabled.
+func (c *VerificationSystemConfig) IsPOREnabled() bool {
+	return c != nil && c.Enabled && c.POR != nil && c.POR.Enabled
 }
