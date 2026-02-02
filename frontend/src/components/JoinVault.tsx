@@ -2,6 +2,8 @@ import { useState } from "react";
 import type { VaultConfig, Step } from "../types";
 import { fromHex } from "../lib/sss";
 import { generateKeyPair, keyId } from "../lib/crypto";
+import { useClipboard } from "../hooks/useClipboard";
+import { Alert, CopyableField } from "./ui";
 
 interface JoinVaultProps {
   onComplete: (config: VaultConfig) => void;
@@ -27,7 +29,7 @@ export function JoinVault({ onComplete, onNavigate }: JoinVaultProps) {
   } | null>(null);
   const [error, setError] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useClipboard();
 
   const handleJoinSSS = () => {
     setError("");
@@ -114,11 +116,6 @@ export function JoinVault({ onComplete, onNavigate }: JoinVaultProps) {
     onComplete(config);
   };
 
-  const copyToClipboard = async (text: string) => {
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
 
   // Show result screen for consensus mode
   if (generatedKeys) {
@@ -164,30 +161,22 @@ export function JoinVault({ onComplete, onNavigate }: JoinVaultProps) {
           </div>
         </div>
 
-        <div className="bg-yellow-900/30 border border-yellow-600/50 rounded-lg p-6 mb-6">
-          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2 text-yellow-400">
-            <span>⚠️</span> Register with Vault Owner
+        <Alert variant="warning" className="mb-6">
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            Register with Vault Owner
           </h2>
           <p className="text-sm text-gray-300 mb-4">
             Share your public key with the vault owner so they can add you as a
             key holder.
           </p>
 
-          <div>
-            <label className="text-sm text-gray-400">Your Public Key</label>
-            <div className="flex gap-2">
-              <code className="flex-1 font-mono bg-gray-900 rounded px-3 py-2 break-all text-xs">
-                {generatedKeys.publicKey}
-              </code>
-              <button
-                onClick={() => copyToClipboard(generatedKeys.publicKey)}
-                className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded transition-colors"
-              >
-                {copied ? "✓" : "📋"}
-              </button>
-            </div>
-          </div>
-        </div>
+          <CopyableField
+            label="Your Public Key"
+            value={generatedKeys.publicKey}
+            externalCopied={copied}
+            onCopy={() => copy(generatedKeys.publicKey)}
+          />
+        </Alert>
 
         <div className="flex gap-4">
           <button
@@ -310,9 +299,9 @@ export function JoinVault({ onComplete, onNavigate }: JoinVaultProps) {
         </div>
 
         {error && (
-          <div className="mt-4 p-3 bg-red-900/30 border border-red-500/50 rounded-lg text-red-400 text-sm">
+          <Alert variant="error" className="mt-4">
             {error}
-          </div>
+          </Alert>
         )}
 
         <div className="mt-6 pt-6 border-t border-gray-700">

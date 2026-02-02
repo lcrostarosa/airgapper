@@ -4,20 +4,6 @@
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8081";
 
-export interface FilesystemEntry {
-  name: string;
-  path: string;
-  isDir: boolean;
-  size?: number;
-  modTime: string;
-}
-
-export interface BrowseResponse {
-  path: string;
-  parent?: string;
-  entries: FilesystemEntry[];
-}
-
 export interface KeyHolder {
   id: string;
   name: string;
@@ -130,23 +116,6 @@ async function fetchApi<T>(
   }
 
   return result.data as T;
-}
-
-/**
- * Browse filesystem directory
- */
-export async function browseFilesystem(
-  path?: string,
-  showHidden = false
-): Promise<BrowseResponse> {
-  const params = new URLSearchParams();
-  if (path) params.set("path", path);
-  if (showHidden) params.set("showHidden", "true");
-
-  const queryString = params.toString();
-  const url = `/api/filesystem/browse${queryString ? `?${queryString}` : ""}`;
-
-  return fetchApi<BrowseResponse>(url);
 }
 
 /**

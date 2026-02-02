@@ -1,12 +1,9 @@
 package cli
 
 import (
-	"context"
 	"net/http"
 	"os"
-	"os/signal"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -16,6 +13,7 @@ import (
 	"github.com/lcrostarosa/airgapper/backend/internal/logging"
 	"github.com/lcrostarosa/airgapper/backend/internal/restic"
 	"github.com/lcrostarosa/airgapper/backend/internal/scheduler"
+	"github.com/lcrostarosa/airgapper/backend/internal/server"
 )
 
 var serveCmd = &cobra.Command{
@@ -146,33 +144,17 @@ func setupScheduler(cmd *cobra.Command, serveCfg *config.Config, server *api.Ser
 	return sched
 }
 
-func runServer(server *api.Server, sched *scheduler.Scheduler) error {
+func runServer(apiServer *api.Server, sched *scheduler.Scheduler) error {
 	logging.Info("Press Ctrl+C to stop")
 
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	httpServer := &http.Server{
+		Addr:    apiServer.Addr(),
+		Handler: apiServer.Handler(),
+	}
 
-	go func() {
-		if err := server.Start(); err != nil && err != http.ErrServerClosed {
-			logging.Error("Server error", logging.Err(err))
-			os.Exit(1)
+	return server.RunWithGracefulShutdown(httpServer, func() {
+		if sched != nil {
+			sched.Stop()
 		}
-	}()
-
-	<-stop
-	logging.Info("Shutting down...")
-
-	if sched != nil {
-		sched.Stop()
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := server.Shutdown(ctx); err != nil {
-		return err
-	}
-
-	logging.Info("Server stopped")
-	return nil
+	})
 }

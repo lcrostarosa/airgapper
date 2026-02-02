@@ -287,7 +287,7 @@ Internal structure of the Airgapper application:
 ```mermaid
 flowchart TB
     subgraph frontend["Frontend (React + Vite + TypeScript)"]
-        components["UI Components<br/><small>Dashboard, InitVault,<br/>JoinVault, HostSetup,<br/>ConsensusSetup, FilePicker</small>"]
+        components["UI Components<br/><small>Dashboard, InitVault,<br/>JoinVault, HostSetup,<br/>ConsensusSetup</small>"]
         api_client["API Client<br/><small>lib/api.ts</small>"]
         crypto_lib["Crypto Utils<br/><small>lib/crypto.ts</small>"]
         components --> api_client

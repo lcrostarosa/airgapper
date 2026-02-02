@@ -1,7 +1,8 @@
 import { useState } from "react";
 import type { VaultConfig, Step, PendingRequest } from "../types";
 import { fromHex, combine, toHex } from "../lib/sss";
-import { FilePicker } from "./FilePicker";
+import { useClipboard } from "../hooks/useClipboard";
+import { Alert, CopyableField } from "./ui";
 
 interface DashboardProps {
   config: VaultConfig;
@@ -14,8 +15,8 @@ export function Dashboard({ config, onClear, onUpdateConfig }: DashboardProps) {
   const [showShare, setShowShare] = useState(false);
   const [testShare, setTestShare] = useState("");
   const [testResult, setTestResult] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
-  const [showFilePicker, setShowFilePicker] = useState(false);
+  const { copiedId, copy } = useClipboard();
+  const [newPath, setNewPath] = useState("");
   const [activeTab, setActiveTab] = useState<"status" | "requests" | "paths">(
     "status"
   );
@@ -25,12 +26,6 @@ export function Dashboard({ config, onClear, onUpdateConfig }: DashboardProps) {
 
   const isConsensusMode = !!config.consensus;
   const isSSSMode = !!config.localShare && !config.consensus;
-
-  const copyToClipboard = async (text: string) => {
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
 
   const testReconstruct = () => {
     if (!testShare.trim() || !config.localShare) {
@@ -251,11 +246,11 @@ export function Dashboard({ config, onClear, onUpdateConfig }: DashboardProps) {
 
                 {config.consensus!.keyHolders.length <
                   config.consensus!.totalKeys && (
-                  <div className="text-sm text-yellow-400 bg-yellow-900/30 border border-yellow-600/50 rounded p-3">
+                  <Alert variant="warning">
                     {config.consensus!.totalKeys -
                       config.consensus!.keyHolders.length}{" "}
                     more key holder(s) needed
-                  </div>
+                  </Alert>
                 )}
               </div>
             </div>
@@ -268,20 +263,14 @@ export function Dashboard({ config, onClear, onUpdateConfig }: DashboardProps) {
             </h2>
 
             {isConsensusMode && config.keyId && (
-              <div className="mb-4">
-                <div className="text-sm text-gray-400 mb-1">Key ID</div>
-                <div className="flex gap-2">
-                  <code className="flex-1 bg-gray-900 rounded px-3 py-2 font-mono text-sm">
-                    {config.keyId}
-                  </code>
-                  <button
-                    onClick={() => copyToClipboard(config.keyId!)}
-                    className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded transition-colors"
-                  >
-                    {copied ? "✓" : "📋"}
-                  </button>
-                </div>
-              </div>
+              <CopyableField
+                label="Key ID"
+                value={config.keyId}
+                id="keyId"
+                externalCopied={copiedId === "keyId"}
+                onCopy={() => copy(config.keyId!, "keyId")}
+                className="mb-4"
+              />
             )}
 
             {isSSSMode && (
@@ -298,17 +287,12 @@ export function Dashboard({ config, onClear, onUpdateConfig }: DashboardProps) {
                   </button>
                 </div>
                 {showShare ? (
-                  <div className="flex gap-2">
-                    <code className="flex-1 bg-gray-900 rounded px-3 py-2 font-mono text-sm break-all">
-                      {config.localShare}
-                    </code>
-                    <button
-                      onClick={() => copyToClipboard(config.localShare!)}
-                      className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded transition-colors"
-                    >
-                      {copied ? "✓" : "📋"}
-                    </button>
-                  </div>
+                  <CopyableField
+                    value={config.localShare!}
+                    id="localShare"
+                    externalCopied={copiedId === "localShare"}
+                    onCopy={() => copy(config.localShare!, "localShare")}
+                  />
                 ) : (
                   <div className="bg-gray-900 rounded px-3 py-2 font-mono text-sm text-gray-500">
                     ••••••••••••••••••••••••••••••••
@@ -362,18 +346,17 @@ export function Dashboard({ config, onClear, onUpdateConfig }: DashboardProps) {
                 </button>
 
                 {testResult && (
-                  <div
-                    className={`p-3 rounded-lg text-sm ${
+                  <Alert
+                    variant={
                       testResult.startsWith("Success")
-                        ? "bg-green-900/30 border border-green-500/50 text-green-400"
-                        : testResult.startsWith("Error") ||
-                          testResult.startsWith("Mismatch")
-                        ? "bg-red-900/30 border border-red-500/50 text-red-400"
-                        : "bg-gray-700 text-gray-300"
-                    }`}
+                        ? "success"
+                        : testResult.startsWith("Error") || testResult.startsWith("Mismatch")
+                        ? "error"
+                        : "info"
+                    }
                   >
                     {testResult}
-                  </div>
+                  </Alert>
                 )}
               </div>
             </div>
@@ -562,13 +545,33 @@ export function Dashboard({ config, onClear, onUpdateConfig }: DashboardProps) {
             </div>
           )}
 
-          <button
-            onClick={() => setShowFilePicker(true)}
-            className="w-full bg-gray-700 hover:bg-gray-600 py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
-          >
-            <span>➕</span>
-            Add Backup Path
-          </button>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={newPath}
+              onChange={(e) => setNewPath(e.target.value)}
+              placeholder="/path/to/backup"
+              className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 transition-colors font-mono text-sm"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && newPath.trim()) {
+                  handleAddPaths([newPath.trim()]);
+                  setNewPath("");
+                }
+              }}
+            />
+            <button
+              onClick={() => {
+                if (newPath.trim()) {
+                  handleAddPaths([newPath.trim()]);
+                  setNewPath("");
+                }
+              }}
+              disabled={!newPath.trim()}
+              className="px-4 py-3 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:cursor-not-allowed rounded-lg transition-colors"
+            >
+              Add
+            </button>
+          </div>
 
           {config.backupPaths && config.backupPaths.length > 0 && (
             <div className="mt-4 pt-4 border-t border-gray-700">
@@ -580,16 +583,6 @@ export function Dashboard({ config, onClear, onUpdateConfig }: DashboardProps) {
           )}
         </div>
       )}
-
-      {/* File Picker Modal */}
-      <FilePicker
-        isOpen={showFilePicker}
-        onClose={() => setShowFilePicker(false)}
-        onSelect={handleAddPaths}
-        selectionMode="multiple"
-        allowFolders={true}
-        allowFiles={true}
-      />
     </div>
   );
 }

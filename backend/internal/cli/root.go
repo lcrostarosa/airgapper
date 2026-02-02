@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"os"
+	"runtime/debug"
 
 	"github.com/spf13/cobra"
 
@@ -11,13 +12,29 @@ import (
 )
 
 var (
-	// Version is set at build time
-	Version = "0.4.0"
+	// version can be set via ldflags: -ldflags "-X github.com/lcrostarosa/airgapper/backend/internal/cli.version=v1.0.0"
+	version = ""
+
+	// Version is the resolved version string
+	Version = resolveVersion()
 
 	// App state
 	cfg    *config.Config
 	cfgErr error
 )
+
+// resolveVersion returns the version from ldflags, build info, or a default
+func resolveVersion() string {
+	// Check ldflags first
+	if version != "" {
+		return version
+	}
+	// Try build info (works when installed via go install or built with module info)
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
+		return info.Main.Version
+	}
+	return "dev"
+}
 
 // rootCmd is the base command
 var rootCmd = &cobra.Command{
@@ -35,13 +52,8 @@ func Execute() {
 	}
 }
 
-// SetVersion sets the version string
-func SetVersion(v string) {
-	Version = v
-	rootCmd.Version = v
-}
-
 func init() {
+	rootCmd.Version = Version
 	cobra.OnInitialize(initLogging, initConfig)
 	rootCmd.CompletionOptions.DisableDefaultCmd = true
 }

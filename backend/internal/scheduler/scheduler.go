@@ -3,162 +3,42 @@ package scheduler
 
 import (
 	"fmt"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/lcrostarosa/airgapper/backend/internal/logging"
 )
 
-// Schedule represents a backup schedule
-type Schedule struct {
-	// Cron expression or simple interval (daily, hourly, etc.)
-	Expression string
-
-	// Parsed schedule
-	minute   int  // 0-59, -1 for any
-	hour     int  // 0-23, -1 for any
-	dom      int  // 1-31, -1 for any
-	month    int  // 1-12, -1 for any
-	dow      int  // 0-6 (Sunday=0), -1 for any
-	interval time.Duration // For simple intervals
-}
-
-// ParseSchedule parses a schedule expression
+// ParseSchedule parses a schedule expression.
 // Supports:
 // - Simple: "hourly", "daily", "weekly"
 // - Intervals: "every 4h", "every 30m"
-// - Cron: "0 2 * * *" (minute hour dom month dow)
+// - Cron (simple): "0 2 * * *" (single values only)
+// - Cron (enhanced): "0-30 2 * * *" (ranges, steps, lists)
+//
+// This is an alias for ParseScheduleEnhanced which provides full cron syntax support.
 func ParseSchedule(expr string) (*Schedule, error) {
-	expr = strings.TrimSpace(strings.ToLower(expr))
-	s := &Schedule{Expression: expr}
-
-	// Simple keywords
-	switch expr {
-	case "hourly":
-		s.interval = time.Hour
-		return s, nil
-	case "daily":
-		s.hour = 2 // 2 AM
-		s.minute = 0
-		s.dom = -1
-		s.month = -1
-		s.dow = -1
-		return s, nil
-	case "weekly":
-		s.hour = 2
-		s.minute = 0
-		s.dom = -1
-		s.month = -1
-		s.dow = 0 // Sunday
-		return s, nil
-	}
-
-	// Interval format: "every Xh", "every Xm"
-	if strings.HasPrefix(expr, "every ") {
-		intervalStr := strings.TrimPrefix(expr, "every ")
-		dur, err := time.ParseDuration(intervalStr)
-		if err != nil {
-			return nil, fmt.Errorf("invalid interval: %s", intervalStr)
-		}
-		if dur < time.Minute {
-			return nil, fmt.Errorf("interval must be at least 1 minute")
-		}
-		s.interval = dur
-		return s, nil
-	}
-
-	// Cron format: "minute hour dom month dow"
-	parts := strings.Fields(expr)
-	if len(parts) == 5 {
-		var err error
-		s.minute, err = parseCronField(parts[0], 0, 59)
-		if err != nil {
-			return nil, fmt.Errorf("invalid minute: %w", err)
-		}
-		s.hour, err = parseCronField(parts[1], 0, 23)
-		if err != nil {
-			return nil, fmt.Errorf("invalid hour: %w", err)
-		}
-		s.dom, err = parseCronField(parts[2], 1, 31)
-		if err != nil {
-			return nil, fmt.Errorf("invalid day of month: %w", err)
-		}
-		s.month, err = parseCronField(parts[3], 1, 12)
-		if err != nil {
-			return nil, fmt.Errorf("invalid month: %w", err)
-		}
-		s.dow, err = parseCronField(parts[4], 0, 6)
-		if err != nil {
-			return nil, fmt.Errorf("invalid day of week: %w", err)
-		}
-		return s, nil
-	}
-
-	return nil, fmt.Errorf("unrecognized schedule format: %s", expr)
+	return ParseScheduleEnhanced(expr)
 }
 
-func parseCronField(field string, min, max int) (int, error) {
-	if field == "*" {
-		return -1, nil
-	}
-	val, err := strconv.Atoi(field)
-	if err != nil {
-		return 0, err
-	}
-	if val < min || val > max {
-		return 0, fmt.Errorf("value %d out of range [%d, %d]", val, min, max)
-	}
-	return val, nil
-}
-
-// NextRun calculates the next run time after 'after'
-func (s *Schedule) NextRun(after time.Time) time.Time {
-	// Interval-based
-	if s.interval > 0 {
-		return after.Add(s.interval)
-	}
-
-	// Cron-based - find next matching time
-	next := after.Add(time.Minute).Truncate(time.Minute)
-
-	// Search up to 1 year ahead
-	maxSearch := after.Add(365 * 24 * time.Hour)
-	for next.Before(maxSearch) {
-		if s.matches(next) {
-			return next
-		}
-		next = next.Add(time.Minute)
-	}
-
-	// Fallback to 24h if no match found
-	return after.Add(24 * time.Hour)
-}
-
-func (s *Schedule) matches(t time.Time) bool {
-	if s.minute != -1 && t.Minute() != s.minute {
-		return false
-	}
-	if s.hour != -1 && t.Hour() != s.hour {
-		return false
-	}
-	if s.dom != -1 && t.Day() != s.dom {
-		return false
-	}
-	if s.month != -1 && int(t.Month()) != s.month {
-		return false
-	}
-	if s.dow != -1 && int(t.Weekday()) != s.dow {
-		return false
-	}
-	return true
+// SchedulerConfig holds configuration for creating a new scheduler
+type SchedulerConfig struct {
+	// Schedule is the backup schedule
+	Schedule *Schedule
+	// BackupFunc is the function to call when running backups
+	BackupFunc func() error
+	// Retry configures retry behavior (nil = no retries, backward compatible)
+	Retry *RetryStrategy
+	// Callbacks hooks for backup lifecycle events (nil = logging only)
+	Callbacks *SchedulerCallbacks
 }
 
 // Scheduler runs scheduled backups
 type Scheduler struct {
 	schedule   *Schedule
 	backupFunc func() error
+	retry      *RetryStrategy
+	callbacks  *SchedulerCallbacks
 	paths      []string
 	stop       chan struct{}
 	wg         sync.WaitGroup
@@ -166,14 +46,30 @@ type Scheduler struct {
 	running    bool
 	lastRun    time.Time
 	lastError  error
+	history    []*BackupResult
+	historyMax int
 }
 
-// NewScheduler creates a new scheduler
+// NewScheduler creates a new scheduler.
+// This is the backward-compatible constructor.
 func NewScheduler(schedule *Schedule, backupFunc func() error) *Scheduler {
 	return &Scheduler{
 		schedule:   schedule,
 		backupFunc: backupFunc,
 		stop:       make(chan struct{}),
+		historyMax: 100,
+	}
+}
+
+// NewSchedulerWithConfig creates a scheduler with full configuration.
+func NewSchedulerWithConfig(config SchedulerConfig) *Scheduler {
+	return &Scheduler{
+		schedule:   config.Schedule,
+		backupFunc: config.BackupFunc,
+		retry:      config.Retry,
+		callbacks:  config.Callbacks,
+		stop:       make(chan struct{}),
+		historyMax: 100,
 	}
 }
 
@@ -222,6 +118,47 @@ func (s *Scheduler) Status() (lastRun time.Time, lastError error, nextRun time.T
 	return
 }
 
+// GetHistory returns recent backup results
+func (s *Scheduler) GetHistory(limit int) []*BackupResult {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if limit <= 0 || limit > len(s.history) {
+		limit = len(s.history)
+	}
+
+	// Return most recent entries
+	start := len(s.history) - limit
+	if start < 0 {
+		start = 0
+	}
+
+	result := make([]*BackupResult, limit)
+	copy(result, s.history[start:])
+	return result
+}
+
+// UpdateSchedule changes the schedule without stopping the scheduler (hot-reload)
+func (s *Scheduler) UpdateSchedule(schedule *Schedule) {
+	s.mu.Lock()
+	oldSchedule := s.schedule
+	s.schedule = schedule
+	s.mu.Unlock()
+
+	if s.callbacks != nil {
+		s.callbacks.callOnScheduleChange(oldSchedule, schedule)
+	}
+
+	logging.Infof("Schedule updated from %q to %q", oldSchedule.Expression, schedule.Expression)
+}
+
+// GetSchedule returns the current schedule
+func (s *Scheduler) GetSchedule() *Schedule {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.schedule
+}
+
 func (s *Scheduler) run() {
 	defer s.wg.Done()
 
@@ -242,25 +179,101 @@ func (s *Scheduler) run() {
 			logging.Info("Scheduler stopped")
 			return
 		case <-time.After(waitDuration):
-			logging.Info("Running scheduled backup...")
+			s.runBackupWithRetry(nextRun)
 
-			err := s.backupFunc()
-
+			// Get the schedule (may have been updated)
 			s.mu.Lock()
-			s.lastRun = time.Now()
-			s.lastError = err
+			schedule := s.schedule
 			s.mu.Unlock()
 
-			if err != nil {
-				logging.Errorf("Scheduled backup failed: %v", err)
-			} else {
-				logging.Info("Scheduled backup completed successfully")
-			}
-
-			nextRun = s.schedule.NextRun(time.Now())
+			nextRun = schedule.NextRun(time.Now())
 			logging.Infof("Next backup at %s", nextRun.Format("2006-01-02 15:04:05"))
 		}
 	}
+}
+
+func (s *Scheduler) runBackupWithRetry(scheduledTime time.Time) {
+	var results []*BackupResult
+	maxAttempts := 1
+
+	if s.retry != nil && s.retry.MaxRetries > 0 {
+		maxAttempts = s.retry.MaxRetries + 1
+	}
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		result := s.runSingleBackup(scheduledTime, attempt, maxAttempts)
+		results = append(results, result)
+
+		// Record in history
+		s.mu.Lock()
+		s.history = append(s.history, result)
+		if len(s.history) > s.historyMax {
+			s.history = s.history[1:]
+		}
+		s.lastRun = result.EndTime
+		s.lastError = result.Error
+		s.mu.Unlock()
+
+		if result.Success {
+			return
+		}
+
+		if !result.WillRetry {
+			break
+		}
+
+		// Wait before retry
+		delay := s.retry.NextDelay(attempt)
+		logging.Infof("Retrying backup in %v (attempt %d/%d)", delay, attempt+1, maxAttempts)
+
+		select {
+		case <-s.stop:
+			return
+		case <-time.After(delay):
+		}
+	}
+
+	// All attempts exhausted
+	if len(results) > 1 && s.callbacks != nil {
+		s.callbacks.callOnRetryExhausted(results)
+	}
+}
+
+func (s *Scheduler) runSingleBackup(scheduledTime time.Time, attempt, maxAttempts int) *BackupResult {
+	result := &BackupResult{
+		ScheduledTime: scheduledTime,
+		StartTime:     time.Now(),
+		Attempt:       attempt,
+	}
+
+	// Notify start
+	if s.callbacks != nil {
+		s.callbacks.callOnBackupStart(result)
+	}
+
+	logging.Info("Running scheduled backup...")
+
+	// Run backup
+	err := s.backupFunc()
+	result.EndTime = time.Now()
+	result.Error = err
+	result.Success = err == nil
+	result.WillRetry = !result.Success && s.retry != nil && s.retry.ShouldRetry(attempt)
+
+	// Notify completion
+	if result.Success {
+		if s.callbacks != nil {
+			s.callbacks.callOnBackupSuccess(result)
+		}
+		logging.Info("Scheduled backup completed successfully")
+	} else {
+		if s.callbacks != nil {
+			s.callbacks.callOnBackupFailure(result)
+		}
+		logging.Errorf("Scheduled backup failed: %v", err)
+	}
+
+	return result
 }
 
 // FormatDuration formats a duration nicely

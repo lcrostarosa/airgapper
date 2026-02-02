@@ -3,7 +3,7 @@
 
 BINARY := airgapper
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
-LDFLAGS := -ldflags "-X main.version=$(VERSION)"
+LDFLAGS := -ldflags "-X github.com/lcrostarosa/airgapper/backend/internal/cli.version=$(VERSION)"
 GO := go
 
 .PHONY: all build clean dev test help \

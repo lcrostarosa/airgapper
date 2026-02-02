@@ -2,8 +2,9 @@ import { useState } from "react";
 import type { VaultConfig, Step } from "../types";
 import { split, generatePassword, toHex } from "../lib/sss";
 import { generateKeyPair, keyId } from "../lib/crypto";
-import { FilePicker } from "./FilePicker";
 import { ConsensusSetup } from "./ConsensusSetup";
+import { useClipboard } from "../hooks/useClipboard";
+import { Alert, CopyableField, StepIndicator } from "./ui";
 
 interface InitVaultProps {
   onComplete: (config: VaultConfig) => void;
@@ -25,12 +26,12 @@ export function InitVault({ onComplete, onNavigate }: InitVaultProps) {
 
   // Backup paths
   const [backupPaths, setBackupPaths] = useState<string[]>([]);
-  const [showFilePicker, setShowFilePicker] = useState(false);
+  const [newPath, setNewPath] = useState("");
 
   // Result
   const [isGenerating, setIsGenerating] = useState(false);
   const [result, setResult] = useState<VaultConfig | null>(null);
-  const [copied, setCopied] = useState<string | null>(null);
+  const { copiedId, copy } = useClipboard();
 
   // Step 1: Paths - validate name and move to destination
   const handlePathsStepNext = () => {
@@ -128,19 +129,16 @@ export function InitVault({ onComplete, onNavigate }: InitVaultProps) {
     }
   };
 
-  const handleFilePickerSelect = (paths: string[]) => {
-    setBackupPaths((prev) => [...prev, ...paths.filter((p) => !prev.includes(p))]);
+  const addPath = (path: string) => {
+    if (path.trim() && !backupPaths.includes(path.trim())) {
+      setBackupPaths((prev) => [...prev, path.trim()]);
+    }
   };
 
   const removePath = (path: string) => {
     setBackupPaths((prev) => prev.filter((p) => p !== path));
   };
 
-  const copyToClipboard = async (text: string, label: string) => {
-    await navigator.clipboard.writeText(text);
-    setCopied(label);
-    setTimeout(() => setCopied(null), 2000);
-  };
 
   const handleSave = () => {
     if (result) {
@@ -232,89 +230,54 @@ export function InitVault({ onComplete, onNavigate }: InitVaultProps) {
 
         {/* Sharing instructions */}
         {isConsensus && result.consensus!.totalKeys > 1 && (
-          <div className="bg-yellow-900/30 border border-yellow-600/50 rounded-lg p-6 mb-6">
-            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2 text-yellow-400">
-              <span>⚠️</span> Invite Key Holders
+          <Alert variant="warning" className="mb-6">
+            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              Invite Key Holders
             </h2>
             <p className="text-sm text-gray-300 mb-4">
               You need {result.consensus!.totalKeys - 1} more key holder(s) to
               complete your {result.consensus!.threshold}-of-
               {result.consensus!.totalKeys} setup.
             </p>
-            <p className="text-sm text-gray-400">
+            <p className="text-sm text-gray-400 mb-2">
               Key holders can join by running:
             </p>
-            <div className="mt-2 flex gap-2">
-              <code className="flex-1 font-mono bg-gray-900 rounded px-3 py-2 break-all text-xs">
-                airgapper join --name THEIR_NAME --repo "{result.repoUrl}"
-                --consensus
-              </code>
-              <button
-                onClick={() =>
-                  copyToClipboard(
-                    `airgapper join --name THEIR_NAME --repo "${result.repoUrl}" --consensus`,
-                    "consensusCommand"
-                  )
-                }
-                className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded transition-colors"
-              >
-                {copied === "consensusCommand" ? "✓" : "📋"}
-              </button>
-            </div>
-          </div>
+            <CopyableField
+              value={`airgapper join --name THEIR_NAME --repo "${result.repoUrl}" --consensus`}
+              id="consensusCommand"
+              externalCopied={copiedId === "consensusCommand"}
+              onCopy={() => copy(`airgapper join --name THEIR_NAME --repo "${result.repoUrl}" --consensus`, "consensusCommand")}
+            />
+          </Alert>
         )}
 
         {!isConsensus && result.peerShare && (
-          <div className="bg-yellow-900/30 border border-yellow-600/50 rounded-lg p-6 mb-6">
-            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2 text-yellow-400">
-              <span>⚠️</span> Share with Your Peer
+          <Alert variant="warning" className="mb-6">
+            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              Share with Your Peer
             </h2>
             <p className="text-sm text-gray-300 mb-4">
               Give this information to your trusted backup host.
             </p>
 
             <div className="space-y-3">
-              <div>
-                <label className="text-sm text-gray-400">
-                  Peer Share (Index {result.peerShareIndex})
-                </label>
-                <div className="flex gap-2">
-                  <code className="flex-1 font-mono bg-gray-900 rounded px-3 py-2 break-all text-sm">
-                    {result.peerShare}
-                  </code>
-                  <button
-                    onClick={() =>
-                      copyToClipboard(result.peerShare!, "peerShare")
-                    }
-                    className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded transition-colors"
-                  >
-                    {copied === "peerShare" ? "✓" : "📋"}
-                  </button>
-                </div>
-              </div>
+              <CopyableField
+                label={`Peer Share (Index ${result.peerShareIndex})`}
+                value={result.peerShare}
+                id="peerShare"
+                externalCopied={copiedId === "peerShare"}
+                onCopy={() => copy(result.peerShare!, "peerShare")}
+              />
 
-              <div>
-                <label className="text-sm text-gray-400">Join Command</label>
-                <div className="flex gap-2">
-                  <code className="flex-1 font-mono bg-gray-900 rounded px-3 py-2 break-all text-xs">
-                    airgapper join --name PEER_NAME --repo "{result.repoUrl}"
-                    --share {result.peerShare} --index {result.peerShareIndex}
-                  </code>
-                  <button
-                    onClick={() =>
-                      copyToClipboard(
-                        `airgapper join --name PEER_NAME --repo "${result.repoUrl}" --share ${result.peerShare} --index ${result.peerShareIndex}`,
-                        "command"
-                      )
-                    }
-                    className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded transition-colors"
-                  >
-                    {copied === "command" ? "✓" : "📋"}
-                  </button>
-                </div>
-              </div>
+              <CopyableField
+                label="Join Command"
+                value={`airgapper join --name PEER_NAME --repo "${result.repoUrl}" --share ${result.peerShare} --index ${result.peerShareIndex}`}
+                id="command"
+                externalCopied={copiedId === "command"}
+                onCopy={() => copy(`airgapper join --name PEER_NAME --repo "${result.repoUrl}" --share ${result.peerShare} --index ${result.peerShareIndex}`, "command")}
+              />
             </div>
-          </div>
+          </Alert>
         )}
 
         <div className="flex gap-4">
@@ -366,28 +329,12 @@ export function InitVault({ onComplete, onNavigate }: InitVaultProps) {
       </div>
 
       {/* Step indicator */}
-      <div className="flex justify-center mb-8">
-        {steps.map((step, index) => (
-          <div key={step} className="flex items-center">
-            <div
-              className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                index <= stepIndex
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-700 text-gray-400"
-              }`}
-            >
-              {index + 1}
-            </div>
-            {index < steps.length - 1 && (
-              <div
-                className={`w-12 h-0.5 ${
-                  index < stepIndex ? "bg-blue-600" : "bg-gray-700"
-                }`}
-              />
-            )}
-          </div>
-        ))}
-      </div>
+      <StepIndicator
+        steps={steps.map(label => ({ label }))}
+        currentStep={stepIndex}
+        showLabels={false}
+        className="justify-center mb-8"
+      />
 
       {/* Step 1: What to Back Up */}
       {currentStep === "paths" && (
@@ -437,13 +384,36 @@ export function InitVault({ onComplete, onNavigate }: InitVaultProps) {
               </div>
             )}
 
-            <button
-              onClick={() => setShowFilePicker(true)}
-              className="w-full bg-gray-700 hover:bg-gray-600 py-4 rounded-lg transition-colors flex items-center justify-center gap-2 border-2 border-dashed border-gray-600 hover:border-gray-500"
-            >
-              <span className="text-xl">📁</span>
-              <span>{backupPaths.length > 0 ? "Add More Folders" : "Select Folders to Back Up"}</span>
-            </button>
+            <div>
+              <label className="block text-sm font-medium mb-2">Add Backup Path</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newPath}
+                  onChange={(e) => setNewPath(e.target.value)}
+                  placeholder="/path/to/backup"
+                  className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 transition-colors font-mono text-sm"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && newPath.trim()) {
+                      addPath(newPath);
+                      setNewPath("");
+                    }
+                  }}
+                />
+                <button
+                  onClick={() => {
+                    if (newPath.trim()) {
+                      addPath(newPath);
+                      setNewPath("");
+                    }
+                  }}
+                  disabled={!newPath.trim()}
+                  className="px-4 py-3 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:cursor-not-allowed rounded-lg transition-colors"
+                >
+                  Add
+                </button>
+              </div>
+            </div>
           </div>
 
           <div className="mt-6 pt-6 border-t border-gray-700">
@@ -588,16 +558,6 @@ export function InitVault({ onComplete, onNavigate }: InitVaultProps) {
           )}
         </ol>
       </div>
-
-      {/* File Picker Modal */}
-      <FilePicker
-        isOpen={showFilePicker}
-        onClose={() => setShowFilePicker(false)}
-        onSelect={handleFilePickerSelect}
-        selectionMode="multiple"
-        allowFolders={true}
-        allowFiles={true}
-      />
     </div>
   );
 }

@@ -1,13 +1,5 @@
 export type Role = "owner" | "host";
 
-export interface FilesystemEntry {
-  name: string;
-  path: string;
-  isDir: boolean;
-  size?: number;
-  modTime: string;
-}
-
 export interface KeyHolder {
   id: string;
   name: string;

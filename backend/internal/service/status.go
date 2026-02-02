@@ -175,6 +175,26 @@ func (s *StatusService) UpdateSchedule(schedule string, paths []string) error {
 	return s.cfg.SetSchedule(schedule, paths)
 }
 
+// HasScheduler returns true if a scheduler is attached
+func (s *StatusService) HasScheduler() bool {
+	return s.scheduler != nil
+}
+
+// HotReloadSchedule updates the running scheduler's schedule without restart
+func (s *StatusService) HotReloadSchedule(schedule *scheduler.Schedule) {
+	if s.scheduler != nil {
+		s.scheduler.UpdateSchedule(schedule)
+	}
+}
+
+// GetBackupHistory returns recent backup results from the scheduler
+func (s *StatusService) GetBackupHistory(limit int) []*scheduler.BackupResult {
+	if s.scheduler == nil {
+		return nil
+	}
+	return s.scheduler.GetHistory(limit)
+}
+
 // IsInitialized returns true if the system is initialized
 func (s *StatusService) IsInitialized() bool {
 	return s.cfg.Name != ""

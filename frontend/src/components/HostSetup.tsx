@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import type { VaultConfig, VaultContract, Step } from "../types";
-import { FilePicker } from "./FilePicker";
 import { getLocalIP, initHost, type HostInitResponse } from "../lib/api";
+import { useClipboard } from "../hooks/useClipboard";
+import { Alert, CopyableField, StepIndicator } from "./ui";
 
 interface HostSetupProps {
   onComplete: (config: VaultConfig) => void;
@@ -27,13 +28,12 @@ export function HostSetup({ onComplete, onNavigate }: HostSetupProps) {
   const [retentionDays, setRetentionDays] = useState("30");
   const [localIP, setLocalIP] = useState("192.168.1.x");
   const [name, setName] = useState("");
-  const [showFilePicker, setShowFilePicker] = useState(false);
 
   // Initialization state
   const [initResult, setInitResult] = useState<HostInitResponse | null>(null);
   const [error, setError] = useState("");
   const [isInitializing, setIsInitializing] = useState(false);
-  const [copied, setCopied] = useState<string | null>(null);
+  const { copiedId, copy } = useClipboard();
 
   // Fetch local IP on mount
   useEffect(() => {
@@ -44,11 +44,6 @@ export function HostSetup({ onComplete, onNavigate }: HostSetupProps) {
       });
   }, []);
 
-  const copyToClipboard = async (text: string, id: string) => {
-    await navigator.clipboard.writeText(text);
-    setCopied(id);
-    setTimeout(() => setCopied(null), 2000);
-  };
 
   const handleInitialize = async () => {
     setError("");
@@ -137,44 +132,24 @@ export function HostSetup({ onComplete, onNavigate }: HostSetupProps) {
     onComplete(config);
   };
 
-  const renderStepIndicator = () => {
-    const steps: { key: SetupStep; label: string }[] = [
-      { key: "intro", label: "Welcome" },
-      { key: "storage", label: "Storage" },
-      { key: "terms", label: "Terms" },
-      { key: "initialize", label: "Setup" },
-      { key: "complete", label: "Done" },
-    ];
+  const setupSteps = [
+    { key: "intro", label: "Welcome" },
+    { key: "storage", label: "Storage" },
+    { key: "terms", label: "Terms" },
+    { key: "initialize", label: "Setup" },
+    { key: "complete", label: "Done" },
+  ];
 
-    const currentIndex = steps.findIndex((s) => s.key === currentStep);
+  const currentStepIndex = setupSteps.findIndex((s) => s.key === currentStep);
 
-    return (
-      <div className="flex items-center justify-center mb-8">
-        {steps.map((step, index) => (
-          <div key={step.key} className="flex items-center">
-            <div
-              className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                index < currentIndex
-                  ? "bg-green-600 text-white"
-                  : index === currentIndex
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-700 text-gray-400"
-              }`}
-            >
-              {index < currentIndex ? "✓" : index + 1}
-            </div>
-            {index < steps.length - 1 && (
-              <div
-                className={`w-12 h-1 mx-2 ${
-                  index < currentIndex ? "bg-green-600" : "bg-gray-700"
-                }`}
-              />
-            )}
-          </div>
-        ))}
-      </div>
-    );
-  };
+  const renderStepIndicator = () => (
+    <StepIndicator
+      steps={setupSteps}
+      currentStep={currentStepIndex}
+      showLabels={false}
+      className="justify-center mb-8"
+    />
+  );
 
   // Step 1: Introduction
   if (currentStep === "intro") {
@@ -274,21 +249,13 @@ export function HostSetup({ onComplete, onNavigate }: HostSetupProps) {
             Select a folder for backup storage
           </label>
 
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={storagePath}
-              onChange={(e) => setStoragePath(e.target.value)}
-              placeholder="/data/backups"
-              className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 transition-colors"
-            />
-            <button
-              onClick={() => setShowFilePicker(true)}
-              className="px-4 py-3 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
-            >
-              Browse
-            </button>
-          </div>
+          <input
+            type="text"
+            value={storagePath}
+            onChange={(e) => setStoragePath(e.target.value)}
+            placeholder="/data/backups"
+            className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 transition-colors"
+          />
 
           {storagePath && (
             <p className="text-sm text-gray-400 mt-2">
@@ -360,19 +327,6 @@ export function HostSetup({ onComplete, onNavigate }: HostSetupProps) {
             Next: Set Terms
           </button>
         </div>
-
-        <FilePicker
-          isOpen={showFilePicker}
-          onClose={() => setShowFilePicker(false)}
-          onSelect={(paths) => {
-            if (paths.length > 0) {
-              setStoragePath(paths[0]);
-            }
-          }}
-          selectionMode="single"
-          allowFolders={true}
-          allowFiles={false}
-        />
       </div>
     );
   }
@@ -708,9 +662,9 @@ export function HostSetup({ onComplete, onNavigate }: HostSetupProps) {
         </div>
 
         {error && (
-          <div className="mb-6 p-3 bg-red-900/30 border border-red-500/50 rounded-lg text-red-400 text-sm">
+          <Alert variant="error" className="mb-6">
             {error}
-          </div>
+          </Alert>
         )}
 
         <div className="flex gap-4">
@@ -782,46 +736,32 @@ export function HostSetup({ onComplete, onNavigate }: HostSetupProps) {
               </div>
             </div>
 
-            <div>
-              <label className="text-sm text-gray-400">Storage URL (share this)</label>
-              <div className="flex gap-2">
-                <code className="flex-1 font-mono bg-gray-900 rounded px-3 py-2 break-all text-green-400">
-                  {initResult.storageUrl}
-                </code>
-                <button
-                  onClick={() => copyToClipboard(initResult.storageUrl, "url")}
-                  className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded transition-colors"
-                >
-                  {copied === "url" ? "✓" : "📋"}
-                </button>
-              </div>
-            </div>
+            <CopyableField
+              label="Storage URL (share this)"
+              value={initResult.storageUrl}
+              id="url"
+              externalCopied={copiedId === "url"}
+              onCopy={() => copy(initResult.storageUrl, "url")}
+            />
           </div>
         </div>
 
-        <div className="bg-yellow-900/30 border border-yellow-600/50 rounded-lg p-6 mb-6">
-          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2 text-yellow-400">
-            <span>⚠️</span> Share with the Data Owner
+        <Alert variant="warning" className="mb-6">
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            Share with the Data Owner
           </h2>
           <p className="text-sm text-gray-300 mb-4">
             The data owner needs your public key to add you as a key holder.
           </p>
 
-          <div>
-            <label className="text-sm text-gray-400">Your Public Key</label>
-            <div className="flex gap-2">
-              <code className="flex-1 font-mono bg-gray-900 rounded px-3 py-2 break-all text-xs">
-                {initResult.publicKey}
-              </code>
-              <button
-                onClick={() => copyToClipboard(initResult.publicKey, "pubkey")}
-                className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded transition-colors"
-              >
-                {copied === "pubkey" ? "✓" : "📋"}
-              </button>
-            </div>
-          </div>
-        </div>
+          <CopyableField
+            label="Your Public Key"
+            value={initResult.publicKey}
+            id="pubkey"
+            externalCopied={copiedId === "pubkey"}
+            onCopy={() => copy(initResult.publicKey, "pubkey")}
+          />
+        </Alert>
 
         <div className="flex gap-4">
           <button
