@@ -17,14 +17,14 @@ import (
 // ChainedAuditEntry represents a single entry in the cryptographic audit chain.
 // Each entry is linked to the previous via hash chaining, making tampering detectable.
 type ChainedAuditEntry struct {
-	ID            string    `json:"id"`
-	Sequence      uint64    `json:"sequence"`
-	Timestamp     time.Time `json:"timestamp"`
-	Operation     string    `json:"operation"` // CREATE, DELETE, POLICY_SET, etc.
-	Path          string    `json:"path,omitempty"`
-	Details       string    `json:"details,omitempty"`
-	Success       bool      `json:"success"`
-	Error         string    `json:"error,omitempty"`
+	ID        string    `json:"id"`
+	Sequence  uint64    `json:"sequence"`
+	Timestamp time.Time `json:"timestamp"`
+	Operation string    `json:"operation"` // CREATE, DELETE, POLICY_SET, etc.
+	Path      string    `json:"path,omitempty"`
+	Details   string    `json:"details,omitempty"`
+	Success   bool      `json:"success"`
+	Error     string    `json:"error,omitempty"`
 
 	// Chaining fields
 	PreviousHash  string `json:"previous_hash"`  // SHA256 of previous entry
@@ -35,16 +35,16 @@ type ChainedAuditEntry struct {
 
 // AuditChain manages a cryptographic audit chain with hash-chaining and signatures.
 type AuditChain struct {
-	basePath   string
-	hostKeyID  string
-	privateKey []byte
-	publicKey  []byte
+	basePath    string
+	hostKeyID   string
+	privateKey  []byte
+	publicKey   []byte
 	signEntries bool
 
-	mu        sync.RWMutex
-	entries   []ChainedAuditEntry
-	sequence  uint64
-	lastHash  string
+	mu         sync.RWMutex
+	entries    []ChainedAuditEntry
+	sequence   uint64
+	lastHash   string
 	maxEntries int
 }
 
@@ -71,7 +71,7 @@ func NewAuditChain(basePath, hostKeyID string, privateKey, publicKey []byte, sig
 		privateKey:  privateKey,
 		publicKey:   publicKey,
 		signEntries: signEntries,
-		maxEntries:  10000, // Keep last 10k entries in memory
+		maxEntries:  10000,     // Keep last 10k entries in memory
 		lastHash:    "genesis", // Initial hash for first entry
 	}
 

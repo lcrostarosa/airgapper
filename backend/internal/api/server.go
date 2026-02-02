@@ -7,12 +7,10 @@ import (
 	"time"
 
 	"github.com/lcrostarosa/airgapper/backend/internal/config"
-	"github.com/lcrostarosa/airgapper/backend/internal/consent"
 	"github.com/lcrostarosa/airgapper/backend/internal/grpc"
 	"github.com/lcrostarosa/airgapper/backend/internal/integrity"
 	"github.com/lcrostarosa/airgapper/backend/internal/logging"
 	"github.com/lcrostarosa/airgapper/backend/internal/scheduler"
-	"github.com/lcrostarosa/airgapper/backend/internal/service"
 	"github.com/lcrostarosa/airgapper/backend/internal/storage"
 )
 
@@ -25,14 +23,7 @@ type Server struct {
 	managedScheduledChecker *integrity.ManagedScheduledChecker
 	addr                    string
 
-	// Services (business logic layer) - handlers MUST use these, not direct data access
-	vaultSvc   *service.VaultService
-	hostSvc    *service.HostService
-	consentSvc *service.ConsentService
-	statusSvc  *service.StatusService
-
 	// cfg is for internal server initialization only (storage, integrity).
-	// HTTP handlers must NOT use this directly - use services instead.
 	cfg *config.Config
 }
 
@@ -43,15 +34,9 @@ func NewServer(cfg *config.Config, addr string) *Server {
 
 // NewServerWithOptions creates a new API server with optional pre-initialized components
 func NewServerWithOptions(cfg *config.Config, addr string, opts *ServerOptions) *Server {
-	consentMgr := consent.NewManager(cfg.ConfigDir)
-
 	s := &Server{
-		cfg:        cfg, // Internal use only - handlers use services
-		addr:       addr,
-		vaultSvc:   service.NewVaultService(cfg),
-		hostSvc:    service.NewHostService(cfg),
-		consentSvc: service.NewConsentService(cfg, consentMgr),
-		statusSvc:  service.NewStatusService(cfg),
+		cfg:  cfg,
+		addr: addr,
 	}
 
 	// Apply pre-initialized components from options
@@ -85,19 +70,24 @@ func NewServerWithOptions(cfg *config.Config, addr string, opts *ServerOptions) 
 
 	mux := http.NewServeMux()
 
-	// Register REST API routes (existing)
-	s.registerRoutes(mux)
-
-	// Register Connect-RPC handlers (new gRPC-compatible API)
+	// Register Connect-RPC handlers (gRPC-compatible API)
 	// These are mounted at /airgapper.v1.<ServiceName>/<Method>
 	s.grpcServer.RegisterHandlers(mux)
-	logging.Infof("Connect-RPC handlers registered (gRPC-compatible API)")
+	logging.Info("Connect-RPC handlers registered (gRPC-compatible API)")
+
+	// Mount storage server if configured
+	if s.storageServer != nil {
+		mux.Handle("/storage/", http.StripPrefix("/storage", storage.WithLogging(s.storageServer.Handler())))
+	}
 
 	s.httpServer = &http.Server{
-		Addr:         addr,
-		Handler:      withLogging(withCORS(mux)),
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
+		Addr:              addr,
+		Handler:           mux,
+		ReadTimeout:       15 * time.Second,
+		ReadHeaderTimeout: 10 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    1 << 20, // 1MB
 	}
 
 	return s
@@ -105,7 +95,6 @@ func NewServerWithOptions(cfg *config.Config, addr string, opts *ServerOptions) 
 
 // SetScheduler sets the backup scheduler
 func (s *Server) SetScheduler(sched *scheduler.Scheduler) {
-	s.statusSvc.SetScheduler(sched)
 	if s.grpcServer != nil {
 		s.grpcServer.SetScheduler(sched)
 	}
