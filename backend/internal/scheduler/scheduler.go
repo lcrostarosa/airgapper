@@ -3,11 +3,12 @@ package scheduler
 
 import (
 	"fmt"
-	"log"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/lcrostarosa/airgapper/backend/internal/logging"
 )
 
 // Schedule represents a backup schedule
@@ -228,7 +229,7 @@ func (s *Scheduler) run() {
 	now := time.Now()
 	nextRun := s.schedule.NextRun(now)
 
-	log.Printf("Scheduler started. Next backup at %s", nextRun.Format("2006-01-02 15:04:05"))
+	logging.Infof("Scheduler started. Next backup at %s", nextRun.Format("2006-01-02 15:04:05"))
 
 	for {
 		waitDuration := time.Until(nextRun)
@@ -238,10 +239,10 @@ func (s *Scheduler) run() {
 
 		select {
 		case <-s.stop:
-			log.Println("Scheduler stopped")
+			logging.Info("Scheduler stopped")
 			return
 		case <-time.After(waitDuration):
-			log.Println("Running scheduled backup...")
+			logging.Info("Running scheduled backup...")
 
 			err := s.backupFunc()
 
@@ -251,13 +252,13 @@ func (s *Scheduler) run() {
 			s.mu.Unlock()
 
 			if err != nil {
-				log.Printf("Scheduled backup failed: %v", err)
+				logging.Errorf("Scheduled backup failed: %v", err)
 			} else {
-				log.Println("Scheduled backup completed successfully")
+				logging.Info("Scheduled backup completed successfully")
 			}
 
 			nextRun = s.schedule.NextRun(time.Now())
-			log.Printf("Next backup at %s", nextRun.Format("2006-01-02 15:04:05"))
+			logging.Infof("Next backup at %s", nextRun.Format("2006-01-02 15:04:05"))
 		}
 	}
 }

@@ -3,11 +3,9 @@ package api
 
 import (
 	"context"
-	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"strings"
@@ -17,29 +15,43 @@ import (
 	"github.com/lcrostarosa/airgapper/backend/internal/consent"
 	"github.com/lcrostarosa/airgapper/backend/internal/crypto"
 	"github.com/lcrostarosa/airgapper/backend/internal/integrity"
+	"github.com/lcrostarosa/airgapper/backend/internal/logging"
 	"github.com/lcrostarosa/airgapper/backend/internal/policy"
 	"github.com/lcrostarosa/airgapper/backend/internal/scheduler"
+	"github.com/lcrostarosa/airgapper/backend/internal/service"
 	"github.com/lcrostarosa/airgapper/backend/internal/storage"
 )
 
 // Server is the HTTP API server
 type Server struct {
-	cfg                      *config.Config
-	consentMgr               *consent.Manager
 	httpServer               *http.Server
-	scheduler                *scheduler.Scheduler
 	storageServer            *storage.Server
 	integrityChecker         *integrity.Checker
 	managedScheduledChecker  *integrity.ManagedScheduledChecker
 	addr                     string
+
+	// Services (business logic layer) - handlers MUST use these, not direct data access
+	vaultSvc   *service.VaultService
+	hostSvc    *service.HostService
+	consentSvc *service.ConsentService
+	statusSvc  *service.StatusService
+
+	// cfg is for internal server initialization only (storage, integrity).
+	// HTTP handlers must NOT use this directly - use services instead.
+	cfg *config.Config
 }
 
 // NewServer creates a new API server
 func NewServer(cfg *config.Config, addr string) *Server {
+	consentMgr := consent.NewManager(cfg.ConfigDir)
+
 	s := &Server{
-		cfg:        cfg,
-		consentMgr: consent.NewManager(cfg.ConfigDir),
+		cfg:        cfg, // Internal use only - handlers use services
 		addr:       addr,
+		vaultSvc:   service.NewVaultService(cfg),
+		hostSvc:    service.NewHostService(cfg),
+		consentSvc: service.NewConsentService(cfg, consentMgr),
+		statusSvc:  service.NewStatusService(cfg),
 	}
 
 	mux := http.NewServeMux()
@@ -106,36 +118,36 @@ func NewServer(cfg *config.Config, addr string) *Server {
 			QuotaBytes: cfg.StorageQuotaBytes,
 		})
 		if err != nil {
-			log.Printf("Warning: failed to initialize storage server: %v", err)
+			logging.Warnf("failed to initialize storage server: %v", err)
 		} else {
 			s.storageServer = storageServer
 			s.storageServer.Start() // Auto-start on server startup
-			log.Printf("Storage server started at /storage/ (path: %s)", cfg.StoragePath)
+			logging.Infof("Storage server started at /storage/ (path: %s)", cfg.StoragePath)
 			// Mount storage server at /storage/
 			mux.Handle("/storage/", http.StripPrefix("/storage", storage.WithLogging(s.storageServer.Handler())))
 
 			// Initialize integrity checker
 			integrityChecker, err := integrity.NewChecker(cfg.StoragePath)
 			if err != nil {
-				log.Printf("Warning: failed to initialize integrity checker: %v", err)
+				logging.Warnf("failed to initialize integrity checker: %v", err)
 			} else {
 				s.integrityChecker = integrityChecker
-				log.Printf("Integrity checker initialized")
+				logging.Info("Integrity checker initialized")
 			}
 
 			// Initialize managed scheduled checker for scheduled verification
 			managedChecker, err := integrity.NewManagedScheduledChecker(cfg.StoragePath)
 			if err != nil {
-				log.Printf("Warning: failed to initialize scheduled checker: %v", err)
+				logging.Warnf("failed to initialize scheduled checker: %v", err)
 			} else {
 				s.managedScheduledChecker = managedChecker
 				// Start if enabled in config
 				if err := s.managedScheduledChecker.Start(); err != nil {
-					log.Printf("Warning: failed to start scheduled verification: %v", err)
+					logging.Warnf("failed to start scheduled verification: %v", err)
 				} else {
 					verifyConfig := s.managedScheduledChecker.GetConfig()
 					if verifyConfig.Enabled {
-						log.Printf("Scheduled verification started (interval: %s, type: %s)",
+						logging.Infof("Scheduled verification started (interval: %s, type: %s)",
 							verifyConfig.Interval, verifyConfig.CheckType)
 					}
 				}
@@ -155,12 +167,12 @@ func NewServer(cfg *config.Config, addr string) *Server {
 
 // SetScheduler sets the backup scheduler
 func (s *Server) SetScheduler(sched *scheduler.Scheduler) {
-	s.scheduler = sched
+	s.statusSvc.SetScheduler(sched)
 }
 
 // Start starts the HTTP server
 func (s *Server) Start() error {
-	log.Printf("Starting Airgapper API server on %s", s.addr)
+	logging.Infof("Starting Airgapper API server on %s", s.addr)
 	return s.httpServer.ListenAndServe()
 }
 
@@ -189,45 +201,131 @@ func jsonError(w http.ResponseWriter, status int, message string) {
 	json.NewEncoder(w).Encode(APIResponse{Success: false, Error: message})
 }
 
+// --- Validation helpers ---
+
+// Validator interface for request body validation
+type Validator interface {
+	Validate() error
+}
+
+// decodeAndValidate decodes JSON body and validates it
+func decodeAndValidate(r *http.Request, v Validator) error {
+	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
+		return fmt.Errorf("invalid request body")
+	}
+	return v.Validate()
+}
+
+// requireMethod checks HTTP method and returns false if wrong
+func requireMethod(w http.ResponseWriter, r *http.Request, method string) bool {
+	if r.Method != method {
+		jsonError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return false
+	}
+	return true
+}
+
+// requireStorageServer checks storage server exists
+func (s *Server) requireStorageServer(w http.ResponseWriter) bool {
+	if s.storageServer == nil {
+		jsonError(w, http.StatusBadRequest, "storage server not configured")
+		return false
+	}
+	return true
+}
+
+// requireIntegrityChecker checks integrity checker exists
+func (s *Server) requireIntegrityChecker(w http.ResponseWriter) bool {
+	if s.integrityChecker == nil {
+		jsonError(w, http.StatusBadRequest, "integrity checker not configured")
+		return false
+	}
+	return true
+}
+
+// requireScheduledChecker checks managed scheduled checker exists
+func (s *Server) requireScheduledChecker(w http.ResponseWriter) bool {
+	if s.managedScheduledChecker == nil {
+		jsonError(w, http.StatusBadRequest, "scheduled verification not configured")
+		return false
+	}
+	return true
+}
+
+// requireConsensus checks consensus mode is configured
+func (s *Server) requireConsensus(w http.ResponseWriter) bool {
+	if !s.vaultSvc.HasConsensus() {
+		jsonError(w, http.StatusBadRequest, "consensus mode not configured")
+		return false
+	}
+	return true
+}
+
+// ValidationError represents a validation failure
+type ValidationError struct {
+	Field   string
+	Message string
+}
+
+func (e ValidationError) Error() string {
+	return e.Message
+}
+
+// required returns an error if value is empty
+func required(field, value string) error {
+	if value == "" {
+		return ValidationError{Field: field, Message: field + " is required"}
+	}
+	return nil
+}
+
+// requiredInt returns an error if value is < min
+func requiredInt(field string, value, min int) error {
+	if value < min {
+		return ValidationError{Field: field, Message: fmt.Sprintf("%s must be at least %d", field, min)}
+	}
+	return nil
+}
+
 // Handlers
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		jsonError(w, http.StatusMethodNotAllowed, "method not allowed")
+	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
 	jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		jsonError(w, http.StatusMethodNotAllowed, "method not allowed")
+	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
 
-	pending, _ := s.consentMgr.ListPending()
+	pending, _ := s.consentSvc.ListPendingRequests()
+	sysStatus := s.statusSvc.GetSystemStatus(len(pending))
 
+	// Build response from service data
 	status := map[string]interface{}{
-		"name":             s.cfg.Name,
-		"role":             s.cfg.Role,
-		"repo_url":         s.cfg.RepoURL,
-		"has_share":        s.cfg.LocalShare != nil,
-		"share_index":      s.cfg.ShareIndex,
-		"pending_requests": len(pending),
-		"backup_paths":     s.cfg.BackupPaths,
+		"name":             sysStatus.Name,
+		"role":             sysStatus.Role,
+		"repo_url":         sysStatus.RepoURL,
+		"has_share":        sysStatus.HasShare,
+		"share_index":      sysStatus.ShareIndex,
+		"pending_requests": sysStatus.PendingRequests,
+		"backup_paths":     sysStatus.BackupPaths,
+		"mode":             sysStatus.Mode,
 	}
 
-	if s.cfg.Peer != nil {
+	if sysStatus.Peer != nil {
 		status["peer"] = map[string]string{
-			"name":    s.cfg.Peer.Name,
-			"address": s.cfg.Peer.Address,
+			"name":    sysStatus.Peer.Name,
+			"address": sysStatus.Peer.Address,
 		}
 	}
 
-	// Add consensus info if configured
-	if s.cfg.Consensus != nil {
-		holders := make([]map[string]interface{}, len(s.cfg.Consensus.KeyHolders))
-		for i, kh := range s.cfg.Consensus.KeyHolders {
+	if sysStatus.Consensus != nil {
+		holders := make([]map[string]interface{}, len(sysStatus.Consensus.KeyHolders))
+		for i, kh := range sysStatus.Consensus.KeyHolders {
 			holders[i] = map[string]interface{}{
 				"id":      kh.ID,
 				"name":    kh.Name,
@@ -235,36 +333,15 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		status["consensus"] = map[string]interface{}{
-			"threshold":       s.cfg.Consensus.Threshold,
-			"totalKeys":       s.cfg.Consensus.TotalKeys,
+			"threshold":       sysStatus.Consensus.Threshold,
+			"totalKeys":       sysStatus.Consensus.TotalKeys,
 			"keyHolders":      holders,
-			"requireApproval": s.cfg.Consensus.RequireApproval,
+			"requireApproval": sysStatus.Consensus.RequireApproval,
 		}
-		status["mode"] = "consensus"
-	} else if s.cfg.LocalShare != nil {
-		status["mode"] = "sss"
-	} else {
-		status["mode"] = "none"
 	}
 
-	// Add scheduler status if available
-	if s.scheduler != nil {
-		lastRun, lastErr, nextRun := s.scheduler.Status()
-		schedStatus := map[string]interface{}{
-			"enabled":  true,
-			"schedule": s.cfg.BackupSchedule,
-			"paths":    s.cfg.BackupPaths,
-		}
-		if !lastRun.IsZero() {
-			schedStatus["last_run"] = lastRun
-			if lastErr != nil {
-				schedStatus["last_error"] = lastErr.Error()
-			}
-		}
-		if !nextRun.IsZero() {
-			schedStatus["next_run"] = nextRun
-		}
-		status["scheduler"] = schedStatus
+	if sysStatus.Scheduler != nil {
+		status["scheduler"] = sysStatus.Scheduler
 	}
 
 	jsonResponse(w, http.StatusOK, status)
@@ -282,7 +359,7 @@ func (s *Server) handleRequests(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListRequests(w http.ResponseWriter, r *http.Request) {
-	requests, err := s.consentMgr.ListPending()
+	requests, err := s.consentSvc.ListPendingRequests()
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -312,23 +389,28 @@ type CreateRequestBody struct {
 	Reason     string   `json:"reason"`
 }
 
+func (b *CreateRequestBody) Validate() error {
+	if err := required("reason", b.Reason); err != nil {
+		return err
+	}
+	if b.SnapshotID == "" {
+		b.SnapshotID = "latest"
+	}
+	return nil
+}
+
 func (s *Server) handleCreateRequest(w http.ResponseWriter, r *http.Request) {
 	var body CreateRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		jsonError(w, http.StatusBadRequest, "invalid request body")
+	if err := decodeAndValidate(r, &body); err != nil {
+		jsonError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	if body.Reason == "" {
-		jsonError(w, http.StatusBadRequest, "reason is required")
-		return
-	}
-
-	if body.SnapshotID == "" {
-		body.SnapshotID = "latest"
-	}
-
-	req, err := s.consentMgr.CreateRequest(s.cfg.Name, body.SnapshotID, body.Reason, body.Paths)
+	req, err := s.consentSvc.CreateRestoreRequest(service.CreateRestoreRequestParams{
+		SnapshotID: body.SnapshotID,
+		Paths:      body.Paths,
+		Reason:     body.Reason,
+	})
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -389,7 +471,7 @@ func (s *Server) handleRequestByID(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetRequest(w http.ResponseWriter, r *http.Request, id string) {
-	req, err := s.consentMgr.GetRequest(id)
+	req, err := s.consentSvc.GetRequest(id)
 	if err != nil {
 		jsonError(w, http.StatusNotFound, err.Error())
 		return
@@ -421,18 +503,7 @@ func (s *Server) handleApprove(w http.ResponseWriter, r *http.Request, id string
 		// Empty body is OK - we use local share
 	}
 
-	share := body.Share
-	if share == nil {
-		// Use our local share
-		localShare, _, err := s.cfg.LoadShare()
-		if err != nil {
-			jsonError(w, http.StatusInternalServerError, "no share available")
-			return
-		}
-		share = localShare
-	}
-
-	if err := s.consentMgr.Approve(id, s.cfg.Name, share); err != nil {
+	if err := s.consentSvc.ApproveRequest(id, body.Share); err != nil {
 		jsonError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -444,7 +515,7 @@ func (s *Server) handleApprove(w http.ResponseWriter, r *http.Request, id string
 }
 
 func (s *Server) handleDeny(w http.ResponseWriter, r *http.Request, id string) {
-	if err := s.consentMgr.Deny(id, s.cfg.Name); err != nil {
+	if err := s.consentSvc.DenyRequest(id); err != nil {
 		jsonError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -471,33 +542,29 @@ type ReceiveShareBody struct {
 	PeerName   string `json:"peer_name"`
 }
 
+func (b *ReceiveShareBody) Validate() error {
+	if b.Share == nil {
+		return ValidationError{Field: "share", Message: "share is required"}
+	}
+	if err := required("repo_url", b.RepoURL); err != nil {
+		return err
+	}
+	return required("peer_name", b.PeerName)
+}
+
 func (s *Server) handleReceiveShare(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		jsonError(w, http.StatusMethodNotAllowed, "method not allowed")
+	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
 
 	var body ReceiveShareBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		jsonError(w, http.StatusBadRequest, "invalid request body")
+	if err := decodeAndValidate(r, &body); err != nil {
+		jsonError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	if body.Share == nil || body.RepoURL == "" || body.PeerName == "" {
-		jsonError(w, http.StatusBadRequest, "share, repo_url, and peer_name are required")
-		return
-	}
-
-	// Store the share
-	s.cfg.LocalShare = body.Share
-	s.cfg.ShareIndex = body.ShareIndex
-	s.cfg.RepoURL = body.RepoURL
-	s.cfg.Peer = &config.PeerInfo{
-		Name: body.PeerName,
-	}
-
-	if err := s.cfg.Save(); err != nil {
-		jsonError(w, http.StatusInternalServerError, fmt.Sprintf("failed to save config: %v", err))
+	if err := s.hostSvc.ReceiveShare(body.Share, body.ShareIndex, body.RepoURL, body.PeerName); err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -510,28 +577,10 @@ func (s *Server) handleReceiveShare(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleSchedule(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		// Get current schedule
-		schedInfo := map[string]interface{}{
-			"schedule": s.cfg.BackupSchedule,
-			"paths":    s.cfg.BackupPaths,
-			"enabled":  s.scheduler != nil,
-		}
-		if s.scheduler != nil {
-			lastRun, lastErr, nextRun := s.scheduler.Status()
-			if !lastRun.IsZero() {
-				schedInfo["last_run"] = lastRun
-				if lastErr != nil {
-					schedInfo["last_error"] = lastErr.Error()
-				}
-			}
-			if !nextRun.IsZero() {
-				schedInfo["next_run"] = nextRun
-			}
-		}
-		jsonResponse(w, http.StatusOK, schedInfo)
+		info := s.statusSvc.GetScheduleInfo()
+		jsonResponse(w, http.StatusOK, info)
 
 	case http.MethodPost:
-		// Update schedule
 		var body struct {
 			Schedule string   `json:"schedule"`
 			Paths    []string `json:"paths"`
@@ -542,14 +591,13 @@ func (s *Server) handleSchedule(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if body.Schedule != "" {
-			// Validate schedule
 			if _, err := scheduler.ParseSchedule(body.Schedule); err != nil {
 				jsonError(w, http.StatusBadRequest, fmt.Sprintf("invalid schedule: %v", err))
 				return
 			}
 		}
 
-		if err := s.cfg.SetSchedule(body.Schedule, body.Paths); err != nil {
+		if err := s.statusSvc.UpdateSchedule(body.Schedule, body.Paths); err != nil {
 			jsonError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
@@ -578,14 +626,15 @@ func (s *Server) handleKeyHolders(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListKeyHolders(w http.ResponseWriter, r *http.Request) {
-	if s.cfg.Consensus == nil {
-		jsonError(w, http.StatusBadRequest, "consensus mode not configured")
+	info, err := s.vaultSvc.GetConsensusInfo()
+	if err != nil {
+		jsonError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	// Return key holders without private key data
-	holders := make([]map[string]interface{}, len(s.cfg.Consensus.KeyHolders))
-	for i, kh := range s.cfg.Consensus.KeyHolders {
+	holders := make([]map[string]interface{}, len(info.KeyHolders))
+	for i, kh := range info.KeyHolders {
 		holders[i] = map[string]interface{}{
 			"id":        kh.ID,
 			"name":      kh.Name,
@@ -597,10 +646,10 @@ func (s *Server) handleListKeyHolders(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonResponse(w, http.StatusOK, map[string]interface{}{
-		"threshold":   s.cfg.Consensus.Threshold,
-		"totalKeys":   s.cfg.Consensus.TotalKeys,
-		"keyHolders":  holders,
-		"requireApproval": s.cfg.Consensus.RequireApproval,
+		"threshold":       info.Threshold,
+		"totalKeys":       info.TotalKeys,
+		"keyHolders":      holders,
+		"requireApproval": info.RequireApproval,
 	})
 }
 
@@ -610,78 +659,52 @@ type RegisterKeyHolderBody struct {
 	Address   string `json:"address,omitempty"`
 }
 
+func (b *RegisterKeyHolderBody) Validate() error {
+	if err := required("name", b.Name); err != nil {
+		return err
+	}
+	return required("publicKey", b.PublicKey)
+}
+
 func (s *Server) handleRegisterKeyHolder(w http.ResponseWriter, r *http.Request) {
-	if s.cfg.Consensus == nil {
-		jsonError(w, http.StatusBadRequest, "consensus mode not configured")
-		return
-	}
-
 	var body RegisterKeyHolderBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		jsonError(w, http.StatusBadRequest, "invalid request body")
+	if err := decodeAndValidate(r, &body); err != nil {
+		jsonError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	if body.Name == "" {
-		jsonError(w, http.StatusBadRequest, "name is required")
-		return
-	}
-	if body.PublicKey == "" {
-		jsonError(w, http.StatusBadRequest, "publicKey is required")
-		return
-	}
-
-	// Decode public key
-	pubKey, err := crypto.DecodePublicKey(body.PublicKey)
-	if err != nil {
-		jsonError(w, http.StatusBadRequest, fmt.Sprintf("invalid public key: %v", err))
-		return
-	}
-
-	// Check if we have room for more key holders
-	if len(s.cfg.Consensus.KeyHolders) >= s.cfg.Consensus.TotalKeys {
-		jsonError(w, http.StatusBadRequest, "maximum number of key holders reached")
-		return
-	}
-
-	// Create key holder
-	holder := config.KeyHolder{
-		ID:        crypto.KeyID(pubKey),
+	result, err := s.vaultSvc.RegisterKeyHolder(service.RegisterKeyHolderParams{
 		Name:      body.Name,
-		PublicKey: pubKey,
+		PublicKey: body.PublicKey,
 		Address:   body.Address,
-		JoinedAt:  time.Now(),
-		IsOwner:   false,
-	}
-
-	if err := s.cfg.AddKeyHolder(holder); err != nil {
+	})
+	if err != nil {
 		jsonError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	jsonResponse(w, http.StatusCreated, map[string]interface{}{
-		"id":       holder.ID,
-		"name":     holder.Name,
-		"joinedAt": holder.JoinedAt,
+		"id":       result.ID,
+		"name":     result.Name,
+		"joinedAt": result.JoinedAt,
 	})
 }
 
 func (s *Server) handleKeyHolderByID(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+
 	// Parse path: /api/keyholders/{id}
-	path := strings.TrimPrefix(r.URL.Path, "/api/keyholders/")
-	if path == "" {
+	id := strings.TrimPrefix(r.URL.Path, "/api/keyholders/")
+	if id == "" {
 		jsonError(w, http.StatusBadRequest, "key holder id required")
 		return
 	}
 
-	if r.Method != http.MethodGet {
-		jsonError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-
-	holder := s.cfg.GetKeyHolder(path)
-	if holder == nil {
-		jsonError(w, http.StatusNotFound, "key holder not found")
+	holder, err := s.vaultSvc.GetKeyHolder(id)
+	if err != nil {
+		jsonError(w, http.StatusNotFound, err.Error())
 		return
 	}
 
@@ -706,92 +729,52 @@ type VaultInitBody struct {
 	RequireApproval bool `json:"requireApproval,omitempty"` // For 1/1 solo mode
 }
 
-func (s *Server) handleVaultInit(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		jsonError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
+func (b *VaultInitBody) Validate() error {
+	if err := required("name", b.Name); err != nil {
+		return err
 	}
+	if err := required("repoUrl", b.RepoURL); err != nil {
+		return err
+	}
+	if err := requiredInt("threshold", b.Threshold, 1); err != nil {
+		return err
+	}
+	if b.TotalKeys < b.Threshold {
+		return ValidationError{Field: "totalKeys", Message: "totalKeys must be >= threshold"}
+	}
+	return nil
+}
 
-	// Check if already initialized
-	if s.cfg.Name != "" {
-		jsonError(w, http.StatusBadRequest, "vault already initialized")
+func (s *Server) handleVaultInit(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
 
 	var body VaultInitBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		jsonError(w, http.StatusBadRequest, "invalid request body")
+	if err := decodeAndValidate(r, &body); err != nil {
+		jsonError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	if body.Name == "" {
-		jsonError(w, http.StatusBadRequest, "name is required")
-		return
-	}
-	if body.RepoURL == "" {
-		jsonError(w, http.StatusBadRequest, "repoUrl is required")
-		return
-	}
-	if body.Threshold < 1 {
-		jsonError(w, http.StatusBadRequest, "threshold must be at least 1")
-		return
-	}
-	if body.TotalKeys < body.Threshold {
-		jsonError(w, http.StatusBadRequest, "totalKeys must be >= threshold")
-		return
-	}
-
-	// Generate owner's key pair
-	pubKey, privKey, err := crypto.GenerateKeyPair()
-	if err != nil {
-		jsonError(w, http.StatusInternalServerError, fmt.Sprintf("failed to generate keys: %v", err))
-		return
-	}
-
-	// Generate repository password using crypto/rand
-	passwordBytes := make([]byte, 32)
-	if _, err := rand.Read(passwordBytes); err != nil {
-		jsonError(w, http.StatusInternalServerError, "failed to generate password")
-		return
-	}
-	password := hex.EncodeToString(passwordBytes)
-	s.cfg.Password = password
-
-	// Set up config
-	s.cfg.Name = body.Name
-	s.cfg.Role = config.RoleOwner
-	s.cfg.RepoURL = body.RepoURL
-	s.cfg.PublicKey = pubKey
-	s.cfg.PrivateKey = privKey
-	s.cfg.BackupPaths = body.BackupPaths
-
-	// Set up consensus
-	ownerKeyHolder := config.KeyHolder{
-		ID:        crypto.KeyID(pubKey),
-		Name:      body.Name,
-		PublicKey: pubKey,
-		JoinedAt:  time.Now(),
-		IsOwner:   true,
-	}
-
-	s.cfg.Consensus = &config.ConsensusConfig{
+	result, err := s.vaultSvc.Init(service.InitParams{
+		Name:            body.Name,
+		RepoURL:         body.RepoURL,
 		Threshold:       body.Threshold,
 		TotalKeys:       body.TotalKeys,
-		KeyHolders:      []config.KeyHolder{ownerKeyHolder},
+		BackupPaths:     body.BackupPaths,
 		RequireApproval: body.RequireApproval,
-	}
-
-	if err := s.cfg.Save(); err != nil {
-		jsonError(w, http.StatusInternalServerError, fmt.Sprintf("failed to save config: %v", err))
+	})
+	if err != nil {
+		jsonError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	jsonResponse(w, http.StatusCreated, map[string]interface{}{
-		"name":      s.cfg.Name,
-		"keyId":     ownerKeyHolder.ID,
-		"publicKey": crypto.EncodePublicKey(pubKey),
-		"threshold": body.Threshold,
-		"totalKeys": body.TotalKeys,
+		"name":      result.Name,
+		"keyId":     result.KeyID,
+		"publicKey": result.PublicKey,
+		"threshold": result.Threshold,
+		"totalKeys": result.TotalKeys,
 	})
 }
 
@@ -802,38 +785,21 @@ type SignRequestBody struct {
 	Signature   string `json:"signature"` // Hex encoded
 }
 
+func (b *SignRequestBody) Validate() error {
+	if err := required("keyHolderId", b.KeyHolderID); err != nil {
+		return err
+	}
+	return required("signature", b.Signature)
+}
+
 func (s *Server) handleSignRequest(w http.ResponseWriter, r *http.Request, id string) {
-	if r.Method != http.MethodPost {
-		jsonError(w, http.StatusMethodNotAllowed, "method not allowed")
+	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
 
 	var body SignRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		jsonError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-
-	if body.KeyHolderID == "" {
-		jsonError(w, http.StatusBadRequest, "keyHolderId is required")
-		return
-	}
-	if body.Signature == "" {
-		jsonError(w, http.StatusBadRequest, "signature is required")
-		return
-	}
-
-	// Verify key holder exists
-	holder := s.cfg.GetKeyHolder(body.KeyHolderID)
-	if holder == nil {
-		jsonError(w, http.StatusBadRequest, "unknown key holder")
-		return
-	}
-
-	// Get the request
-	req, err := s.consentMgr.GetRequest(id)
-	if err != nil {
-		jsonError(w, http.StatusNotFound, err.Error())
+	if err := decodeAndValidate(r, &body); err != nil {
+		jsonError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -844,41 +810,22 @@ func (s *Server) handleSignRequest(w http.ResponseWriter, r *http.Request, id st
 		return
 	}
 
-	// Verify signature
-	valid, err := crypto.VerifyRestoreRequestSignature(
-		holder.PublicKey,
-		sigBytes,
-		req.ID,
-		req.Requester,
-		req.SnapshotID,
-		req.Reason,
-		body.KeyHolderID,
-		req.Paths,
-		req.CreatedAt.Unix(),
-	)
+	// Sign via service (handles verification internally)
+	progress, err := s.consentSvc.SignRequest(service.SignRequestParams{
+		RequestID:   id,
+		KeyHolderID: body.KeyHolderID,
+		Signature:   sigBytes,
+	})
 	if err != nil {
-		jsonError(w, http.StatusInternalServerError, fmt.Sprintf("verification error: %v", err))
-		return
-	}
-	if !valid {
-		jsonError(w, http.StatusBadRequest, "invalid signature")
-		return
-	}
-
-	// Add the signature
-	if err := s.consentMgr.AddSignature(id, body.KeyHolderID, holder.Name, sigBytes); err != nil {
 		jsonError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	// Check approval status
-	current, required, _ := s.consentMgr.GetApprovalProgress(id)
-
 	jsonResponse(w, http.StatusOK, map[string]interface{}{
-		"status":           "signature_added",
-		"currentApprovals": current,
-		"requiredApprovals": required,
-		"isApproved":       current >= required,
+		"status":            "signature_added",
+		"currentApprovals":  progress.Current,
+		"requiredApprovals": progress.Required,
+		"isApproved":        progress.IsApproved,
 	})
 }
 
@@ -896,6 +843,27 @@ func (s *Server) handleLocalIP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonResponse(w, http.StatusOK, map[string]string{"ip": ip})
+}
+
+// getLocalIP returns the server's local IP (method for convenience)
+func (s *Server) getLocalIP() string {
+	ip := getLocalIP()
+	if ip == "" {
+		return "localhost"
+	}
+	return ip
+}
+
+// getPort returns the server's port
+func (s *Server) getPort() string {
+	if s.addr == "" {
+		return "8081"
+	}
+	parts := strings.Split(s.addr, ":")
+	if len(parts) > 1 && parts[len(parts)-1] != "" {
+		return parts[len(parts)-1]
+	}
+	return "8081"
 }
 
 // getLocalIP returns the best guess at the local IP address
@@ -940,7 +908,7 @@ func withLogging(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		next.ServeHTTP(w, r)
-		log.Printf("%s %s %v", r.Method, r.URL.Path, time.Since(start))
+		logging.Debugf("%s %s %v", r.Method, r.URL.Path, time.Since(start))
 	})
 }
 
@@ -962,8 +930,7 @@ func withCORS(next http.Handler) http.Handler {
 // Storage server handlers
 
 func (s *Server) handleStorageStatus(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		jsonError(w, http.StatusMethodNotAllowed, "method not allowed")
+	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
 
@@ -995,37 +962,19 @@ func (s *Server) handleStorageStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleStorageStart(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		jsonError(w, http.StatusMethodNotAllowed, "method not allowed")
+	if !requireMethod(w, r, http.MethodPost) || !s.requireStorageServer(w) {
 		return
 	}
-
-	if s.storageServer == nil {
-		jsonError(w, http.StatusBadRequest, "storage server not configured")
-		return
-	}
-
 	s.storageServer.Start()
-	jsonResponse(w, http.StatusOK, map[string]string{
-		"status": "started",
-	})
+	jsonResponse(w, http.StatusOK, map[string]string{"status": "started"})
 }
 
 func (s *Server) handleStorageStop(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		jsonError(w, http.StatusMethodNotAllowed, "method not allowed")
+	if !requireMethod(w, r, http.MethodPost) || !s.requireStorageServer(w) {
 		return
 	}
-
-	if s.storageServer == nil {
-		jsonError(w, http.StatusBadRequest, "storage server not configured")
-		return
-	}
-
 	s.storageServer.Stop()
-	jsonResponse(w, http.StatusOK, map[string]string{
-		"status": "stopped",
-	})
+	jsonResponse(w, http.StatusOK, map[string]string{"status": "stopped"})
 }
 
 // Host initialization handler
@@ -1039,55 +988,37 @@ type HostInitBody struct {
 	RetentionDays  int    `json:"retentionDays,omitempty"`
 }
 
-func (s *Server) handleHostInit(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		jsonError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
+func (b *HostInitBody) Validate() error {
+	if err := required("name", b.Name); err != nil {
+		return err
 	}
+	return required("storagePath", b.StoragePath)
+}
 
-	// Check if already initialized
-	if s.cfg.Name != "" {
-		jsonError(w, http.StatusBadRequest, "host already initialized")
+func (s *Server) handleHostInit(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
 
 	var body HostInitBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		jsonError(w, http.StatusBadRequest, "invalid request body")
+	if err := decodeAndValidate(r, &body); err != nil {
+		jsonError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	if body.Name == "" {
-		jsonError(w, http.StatusBadRequest, "name is required")
-		return
-	}
-	if body.StoragePath == "" {
-		jsonError(w, http.StatusBadRequest, "storagePath is required")
-		return
-	}
-
-	// Generate host's key pair
-	pubKey, privKey, err := crypto.GenerateKeyPair()
+	// Initialize host config via service
+	result, err := s.hostSvc.Init(service.HostInitParams{
+		Name:         body.Name,
+		StoragePath:  body.StoragePath,
+		StorageQuota: body.StorageQuota,
+		AppendOnly:   body.AppendOnly,
+	})
 	if err != nil {
-		jsonError(w, http.StatusInternalServerError, fmt.Sprintf("failed to generate keys: %v", err))
+		jsonError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	// Set up config
-	s.cfg.Name = body.Name
-	s.cfg.Role = config.RoleHost
-	s.cfg.PublicKey = pubKey
-	s.cfg.PrivateKey = privKey
-	s.cfg.StoragePath = body.StoragePath
-	s.cfg.StorageQuotaBytes = body.StorageQuota
-	s.cfg.StorageAppendOnly = body.AppendOnly
-
-	if err := s.cfg.Save(); err != nil {
-		jsonError(w, http.StatusInternalServerError, fmt.Sprintf("failed to save config: %v", err))
-		return
-	}
-
-	// Initialize storage server
+	// Initialize storage server (runtime component stays in handler)
 	storageServer, err := storage.NewServer(storage.Config{
 		BasePath:   body.StoragePath,
 		AppendOnly: body.AppendOnly,
@@ -1098,31 +1029,18 @@ func (s *Server) handleHostInit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.storageServer = storageServer
+	s.hostSvc.SetStorageServer(storageServer)
 	s.storageServer.Start()
 
-	// Get local IP for the storage URL
-	localIP := getLocalIP()
-	if localIP == "" {
-		localIP = "localhost"
-	}
-
-	// Parse the port from the server address
-	port := "8081"
-	if s.addr != "" {
-		parts := strings.Split(s.addr, ":")
-		if len(parts) > 1 && parts[len(parts)-1] != "" {
-			port = parts[len(parts)-1]
-		}
-	}
-
-	storageURL := fmt.Sprintf("http://%s:%s/storage/", localIP, port)
+	// Build storage URL
+	storageURL := fmt.Sprintf("http://%s:%s/storage/", s.getLocalIP(), s.getPort())
 
 	jsonResponse(w, http.StatusCreated, map[string]interface{}{
-		"name":        s.cfg.Name,
-		"keyId":       crypto.KeyID(pubKey),
-		"publicKey":   crypto.EncodePublicKey(pubKey),
+		"name":        result.Name,
+		"keyId":       result.KeyID,
+		"publicKey":   result.PublicKey,
 		"storageUrl":  storageURL,
-		"storagePath": body.StoragePath,
+		"storagePath": result.StoragePath,
 	})
 }
 
@@ -1142,8 +1060,7 @@ func (s *Server) handlePolicy(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetPolicy(w http.ResponseWriter, r *http.Request) {
-	if s.storageServer == nil {
-		jsonError(w, http.StatusBadRequest, "storage server not configured")
+	if !s.requireStorageServer(w) {
 		return
 	}
 
@@ -1179,8 +1096,7 @@ type CreatePolicyBody struct {
 }
 
 func (s *Server) handleCreatePolicy(w http.ResponseWriter, r *http.Request) {
-	if s.storageServer == nil {
-		jsonError(w, http.StatusBadRequest, "storage server not configured")
+	if !s.requireStorageServer(w) {
 		return
 	}
 
@@ -1249,13 +1165,7 @@ type PolicySignBody struct {
 }
 
 func (s *Server) handlePolicySign(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		jsonError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-
-	if s.storageServer == nil {
-		jsonError(w, http.StatusBadRequest, "storage server not configured")
+	if !requireMethod(w, r, http.MethodPost) || !s.requireStorageServer(w) {
 		return
 	}
 
@@ -1319,7 +1229,7 @@ func (s *Server) handleDeletions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListDeletions(w http.ResponseWriter, r *http.Request) {
-	deletions, err := s.consentMgr.ListPendingDeletions()
+	deletions, err := s.consentSvc.ListPendingDeletions()
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1353,42 +1263,42 @@ type CreateDeletionBody struct {
 	RequiredApprovals int      `json:"requiredApprovals"`
 }
 
+func (b *CreateDeletionBody) Validate() error {
+	if err := required("reason", b.Reason); err != nil {
+		return err
+	}
+	if err := required("deletionType", b.DeletionType); err != nil {
+		return err
+	}
+	if b.RequiredApprovals < 1 {
+		b.RequiredApprovals = 2 // Default to both parties
+	}
+	return nil
+}
+
 func (s *Server) handleCreateDeletion(w http.ResponseWriter, r *http.Request) {
 	var body CreateDeletionBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		jsonError(w, http.StatusBadRequest, "invalid request body")
+	if err := decodeAndValidate(r, &body); err != nil {
+		jsonError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	if body.Reason == "" {
-		jsonError(w, http.StatusBadRequest, "reason is required")
-		return
-	}
-	if body.DeletionType == "" {
-		jsonError(w, http.StatusBadRequest, "deletionType is required")
-		return
-	}
-	if body.RequiredApprovals < 1 {
-		body.RequiredApprovals = 2 // Default to both parties
-	}
-
-	del, err := s.consentMgr.CreateDeletionRequest(
-		s.cfg.Name,
-		consent.DeletionType(body.DeletionType),
-		body.SnapshotIDs,
-		body.Paths,
-		body.Reason,
-		body.RequiredApprovals,
-	)
+	del, err := s.consentSvc.CreateDeletionRequest(service.CreateDeletionRequestParams{
+		DeletionType:      consent.DeletionType(body.DeletionType),
+		SnapshotIDs:       body.SnapshotIDs,
+		Paths:             body.Paths,
+		Reason:            body.Reason,
+		RequiredApprovals: body.RequiredApprovals,
+	})
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	jsonResponse(w, http.StatusCreated, map[string]interface{}{
-		"id":         del.ID,
-		"status":     del.Status,
-		"expiresAt":  del.ExpiresAt,
+		"id":        del.ID,
+		"status":    del.Status,
+		"expiresAt": del.ExpiresAt,
 	})
 }
 
@@ -1435,7 +1345,7 @@ func (s *Server) handleDeletionByID(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetDeletion(w http.ResponseWriter, r *http.Request, id string) {
-	del, err := s.consentMgr.GetDeletionRequest(id)
+	del, err := s.consentSvc.GetDeletionRequest(id)
 	if err != nil {
 		jsonError(w, http.StatusNotFound, err.Error())
 		return
@@ -1463,19 +1373,17 @@ type ApproveDeletionBody struct {
 	Signature   string `json:"signature"` // Hex encoded
 }
 
+func (b *ApproveDeletionBody) Validate() error {
+	if err := required("keyHolderId", b.KeyHolderID); err != nil {
+		return err
+	}
+	return required("signature", b.Signature)
+}
+
 func (s *Server) handleApproveDeletion(w http.ResponseWriter, r *http.Request, id string) {
 	var body ApproveDeletionBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		jsonError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-
-	if body.KeyHolderID == "" {
-		jsonError(w, http.StatusBadRequest, "keyHolderId is required")
-		return
-	}
-	if body.Signature == "" {
-		jsonError(w, http.StatusBadRequest, "signature is required")
+	if err := decodeAndValidate(r, &body); err != nil {
+		jsonError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -1485,34 +1393,22 @@ func (s *Server) handleApproveDeletion(w http.ResponseWriter, r *http.Request, i
 		return
 	}
 
-	// Get key holder name
-	keyHolderName := body.KeyHolderID
-	if s.cfg.Consensus != nil {
-		for _, kh := range s.cfg.Consensus.KeyHolders {
-			if kh.ID == body.KeyHolderID {
-				keyHolderName = kh.Name
-				break
-			}
-		}
-	}
-
-	if err := s.consentMgr.ApproveDeletion(id, body.KeyHolderID, keyHolderName, sigBytes); err != nil {
+	progress, err := s.consentSvc.ApproveDeletion(id, body.KeyHolderID, sigBytes)
+	if err != nil {
 		jsonError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	current, required, _ := s.consentMgr.GetDeletionApprovalProgress(id)
-
 	jsonResponse(w, http.StatusOK, map[string]interface{}{
 		"status":            "signature_added",
-		"currentApprovals":  current,
-		"requiredApprovals": required,
-		"isApproved":        current >= required,
+		"currentApprovals":  progress.Current,
+		"requiredApprovals": progress.Required,
+		"isApproved":        progress.IsApproved,
 	})
 }
 
 func (s *Server) handleDenyDeletion(w http.ResponseWriter, r *http.Request, id string) {
-	if err := s.consentMgr.DenyDeletion(id, s.cfg.Name); err != nil {
+	if err := s.consentSvc.DenyDeletion(id); err != nil {
 		jsonError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -1525,13 +1421,7 @@ func (s *Server) handleDenyDeletion(w http.ResponseWriter, r *http.Request, id s
 // ============================================================================
 
 func (s *Server) handleIntegrityCheck(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		jsonError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-
-	if s.storageServer == nil {
-		jsonError(w, http.StatusBadRequest, "storage server not configured")
+	if !requireMethod(w, r, http.MethodGet) || !s.requireStorageServer(w) {
 		return
 	}
 
@@ -1568,13 +1458,7 @@ func (s *Server) handleIntegrityCheck(w http.ResponseWriter, r *http.Request) {
 
 // handleIntegrityFullCheck runs a full integrity check on all data
 func (s *Server) handleIntegrityFullCheck(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		jsonError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-
-	if s.integrityChecker == nil {
-		jsonError(w, http.StatusBadRequest, "integrity checker not configured")
+	if !requireMethod(w, r, http.MethodPost) || !s.requireIntegrityChecker(w) {
 		return
 	}
 
@@ -1595,8 +1479,7 @@ func (s *Server) handleIntegrityFullCheck(w http.ResponseWriter, r *http.Request
 
 // handleIntegrityRecords manages verification records
 func (s *Server) handleIntegrityRecords(w http.ResponseWriter, r *http.Request) {
-	if s.integrityChecker == nil {
-		jsonError(w, http.StatusBadRequest, "integrity checker not configured")
+	if !s.requireIntegrityChecker(w) {
 		return
 	}
 
@@ -1684,13 +1567,7 @@ func (s *Server) handleIntegrityRecords(w http.ResponseWriter, r *http.Request) 
 
 // handleIntegrityHistory returns recent integrity check history
 func (s *Server) handleIntegrityHistory(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		jsonError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-
-	if s.integrityChecker == nil {
-		jsonError(w, http.StatusBadRequest, "integrity checker not configured")
+	if !requireMethod(w, r, http.MethodGet) || !s.requireIntegrityChecker(w) {
 		return
 	}
 
@@ -1709,11 +1586,9 @@ func (s *Server) handleIntegrityHistory(w http.ResponseWriter, r *http.Request) 
 
 // handleVerificationConfig manages scheduled verification settings
 func (s *Server) handleVerificationConfig(w http.ResponseWriter, r *http.Request) {
-	if s.managedScheduledChecker == nil {
-		jsonError(w, http.StatusBadRequest, "scheduled verification not configured")
+	if !s.requireScheduledChecker(w) {
 		return
 	}
-
 	switch r.Method {
 	case http.MethodGet:
 		s.handleGetVerificationConfig(w, r)
@@ -1828,13 +1703,7 @@ func (s *Server) handleUpdateVerificationConfig(w http.ResponseWriter, r *http.R
 
 // handleRunManualCheck triggers a manual integrity check
 func (s *Server) handleRunManualCheck(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		jsonError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-
-	if s.managedScheduledChecker == nil {
-		jsonError(w, http.StatusBadRequest, "scheduled verification not configured")
+	if !requireMethod(w, r, http.MethodPost) || !s.requireScheduledChecker(w) {
 		return
 	}
 

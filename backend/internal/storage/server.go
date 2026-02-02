@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -18,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/lcrostarosa/airgapper/backend/internal/logging"
 	"github.com/lcrostarosa/airgapper/backend/internal/policy"
 )
 
@@ -246,18 +246,18 @@ func (s *Server) loadPolicy() {
 
 	p, err := policy.FromJSON(data)
 	if err != nil {
-		log.Printf("[storage] Warning: failed to parse policy: %v", err)
+		logging.Warnf("[storage] failed to parse policy: %v", err)
 		return
 	}
 
 	// Verify the policy signatures
 	if err := p.Verify(); err != nil {
-		log.Printf("[storage] Warning: policy signature invalid: %v", err)
+		logging.Warnf("[storage] policy signature invalid: %v", err)
 		return
 	}
 
 	s.policy = p
-	log.Printf("[storage] Loaded policy %s (retention: %d days, deletion: %s)",
+	logging.Infof("[storage] Loaded policy %s (retention: %d days, deletion: %s)",
 		p.ID, p.RetentionDays, p.DeletionMode)
 }
 
@@ -324,7 +324,7 @@ func (s *Server) loadAuditLog() {
 
 	var entries []AuditEntry
 	if err := json.Unmarshal(data, &entries); err != nil {
-		log.Printf("[storage] Warning: failed to parse audit log: %v", err)
+		logging.Warnf("[storage] failed to parse audit log: %v", err)
 		return
 	}
 
@@ -334,12 +334,12 @@ func (s *Server) loadAuditLog() {
 func (s *Server) saveAuditLog() {
 	data, err := json.MarshalIndent(s.auditLog, "", "  ")
 	if err != nil {
-		log.Printf("[storage] Warning: failed to serialize audit log: %v", err)
+		logging.Warnf("[storage] failed to serialize audit log: %v", err)
 		return
 	}
 
 	if err := os.WriteFile(s.auditLogPath(), data, 0600); err != nil {
-		log.Printf("[storage] Warning: failed to save audit log: %v", err)
+		logging.Warnf("[storage] failed to save audit log: %v", err)
 	}
 }
 
@@ -368,9 +368,9 @@ func (s *Server) audit(operation, path, details string, success bool, errMsg str
 
 	// Also log to stdout
 	if success {
-		log.Printf("[storage-audit] %s %s %s", operation, path, details)
+		logging.Debugf("[storage-audit] %s %s %s", operation, path, details)
 	} else {
-		log.Printf("[storage-audit] %s %s FAILED: %s", operation, path, errMsg)
+		logging.Warnf("[storage-audit] %s %s FAILED: %s", operation, path, errMsg)
 	}
 }
 
@@ -827,6 +827,6 @@ func WithLogging(handler http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		handler.ServeHTTP(w, r)
-		log.Printf("[storage] %s %s %v", r.Method, r.URL.Path, time.Since(start))
+		logging.Debugf("[storage] %s %s %v", r.Method, r.URL.Path, time.Since(start))
 	})
 }
