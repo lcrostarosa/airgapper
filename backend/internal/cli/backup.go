@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/lcrostarosa/airgapper/backend/internal/logging"
 	"github.com/lcrostarosa/airgapper/backend/internal/restic"
 )
 
@@ -32,9 +33,9 @@ func runBackup(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no password found - this config may be corrupted")
 	}
 
-	fmt.Print("\n=== Creating Backup ===\n\n")
-	fmt.Printf("Repository: %s\n", cfg.RepoURL)
-	fmt.Printf("Paths: %s\n\n", strings.Join(args, ", "))
+	logging.Info("Creating backup",
+		logging.String("repository", cfg.RepoURL),
+		logging.String("paths", strings.Join(args, ", ")))
 
 	if !restic.IsInstalled() {
 		return fmt.Errorf("restic is not installed")
@@ -48,7 +49,7 @@ func runBackup(cmd *cobra.Command, args []string) error {
 	// Record activity for dead man's switch
 	cfg.RecordActivity()
 
-	fmt.Println("Backup complete!")
+	logging.Info("Backup complete")
 	return nil
 }
 
@@ -69,10 +70,8 @@ func runSnapshots(cmd *cobra.Command, args []string) error {
 	}
 
 	if !cfg.IsOwner() {
-		fmt.Print("\n=== Snapshots ===\n\n")
-		fmt.Printf("Repository: %s\n\n", cfg.RepoURL)
-		fmt.Println("Warning: As a backup host, you cannot list snapshots.")
-		fmt.Println("   The data is encrypted and you don't have the key.")
+		logging.Info("Snapshots", logging.String("repository", cfg.RepoURL))
+		logging.Warn("As a backup host, you cannot list snapshots - the data is encrypted and you don't have the key")
 		return nil
 	}
 
@@ -80,8 +79,7 @@ func runSnapshots(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no password found")
 	}
 
-	fmt.Print("\n=== Snapshots ===\n\n")
-	fmt.Printf("Repository: %s\n\n", cfg.RepoURL)
+	logging.Info("Listing snapshots", logging.String("repository", cfg.RepoURL))
 
 	client := restic.NewClient(cfg.RepoURL, cfg.Password)
 	output, err := client.Snapshots()
@@ -89,6 +87,6 @@ func runSnapshots(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to list snapshots: %w", err)
 	}
 
-	fmt.Println(output)
+	logging.Infof("Snapshots:\n%s", output)
 	return nil
 }

@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/lcrostarosa/airgapper/backend/internal/logging"
 	"github.com/lcrostarosa/airgapper/backend/internal/scheduler"
 )
 
@@ -62,7 +63,7 @@ func clearSchedule() error {
 	if err := cfg.Save(); err != nil {
 		return err
 	}
-	printSuccess("Schedule cleared.")
+	logging.Info("Schedule cleared")
 	return nil
 }
 
@@ -81,42 +82,34 @@ func setBackupSchedule(scheduleExpr string, paths []string) error {
 		return err
 	}
 
-	printSuccess("Schedule configured!")
-	printInfo("Schedule: %s", cfg.BackupSchedule)
-	if len(cfg.BackupPaths) > 0 {
-		printInfo("Paths:    %s", strings.Join(cfg.BackupPaths, ", "))
-	}
-
 	nextRun := sched.NextRun(time.Now())
-	printInfo("Next run: %s (in %s)", nextRun.Format("2006-01-02 15:04:05"), scheduler.FormatDuration(time.Until(nextRun)))
-	fmt.Println()
-	printInfo("To start scheduled backups, run:")
-	printInfo("  airgapper serve")
+	logging.Info("Schedule configured",
+		logging.String("schedule", cfg.BackupSchedule),
+		logging.String("paths", strings.Join(cfg.BackupPaths, ", ")),
+		logging.String("nextRun", nextRun.Format("2006-01-02 15:04:05")),
+		logging.String("in", scheduler.FormatDuration(time.Until(nextRun))))
+
+	logging.Info("To start scheduled backups, run: airgapper serve")
 	return nil
 }
 
 func showSchedule() error {
-	printHeader("Backup Schedule")
+	logging.Info("Backup schedule")
 
 	if cfg.BackupSchedule == "" {
-		printInfo("No schedule configured.")
-		fmt.Println()
-		printInfo("Set a schedule with:")
-		printInfo("  airgapper schedule --set daily ~/Documents")
+		logging.Info("No schedule configured")
+		logging.Info("Set a schedule with: airgapper schedule --set daily ~/Documents")
 		return nil
 	}
 
-	printInfo("Schedule: %s", cfg.BackupSchedule)
-	if len(cfg.BackupPaths) > 0 {
-		printInfo("Paths:    %s", strings.Join(cfg.BackupPaths, ", "))
-	} else {
-		printInfo("Paths:    (none configured)")
-	}
+	logging.Info("Current schedule",
+		logging.String("schedule", cfg.BackupSchedule),
+		logging.String("paths", strings.Join(cfg.BackupPaths, ", ")))
 
 	sched, err := scheduler.ParseSchedule(cfg.BackupSchedule)
 	if err == nil {
 		nextRun := sched.NextRun(time.Now())
-		printInfo("Next run: %s (in %s)", nextRun.Format("2006-01-02 15:04:05"), scheduler.FormatDuration(time.Until(nextRun)))
+		logging.Infof("Next run: %s (in %s)", nextRun.Format("2006-01-02 15:04:05"), scheduler.FormatDuration(time.Until(nextRun)))
 	}
 
 	return nil

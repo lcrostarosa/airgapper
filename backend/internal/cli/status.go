@@ -1,12 +1,12 @@
 package cli
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/lcrostarosa/airgapper/backend/internal/consent"
+	"github.com/lcrostarosa/airgapper/backend/internal/logging"
 	"github.com/lcrostarosa/airgapper/backend/internal/restic"
 )
 
@@ -29,97 +29,92 @@ func runStatus(cmd *cobra.Command, args []string) error {
 }
 
 func showUninitialized() error {
-	printInfo("Airgapper Status: Not initialized")
-	fmt.Println()
-	printInfo("To get started:")
-	printInfo("  As data owner:  airgapper init --name <name> --repo <url>")
-	printInfo("  As backup host: airgapper join --name <name> --repo <url> --share <hex> --index <n>")
+	logging.Info("Airgapper status: Not initialized")
+	logging.Info("To get started:")
+	logging.Info("  As data owner:  airgapper init --name <name> --repo <url>")
+	logging.Info("  As backup host: airgapper join --name <name> --repo <url> --share <hex> --index <n>")
 	return nil
 }
 
 func showStatus() error {
-	printHeader("Airgapper Status")
-
-	// Identity
-	printInfo("Name:       %s", cfg.Name)
-	printInfo("Role:       %s", cfg.Role)
-	printInfo("Repository: %s", cfg.RepoURL)
+	logging.Info("Airgapper status",
+		logging.String("name", cfg.Name),
+		logging.String("role", string(cfg.Role)),
+		logging.String("repository", cfg.RepoURL))
 
 	// Key info
 	if cfg.LocalShare != nil {
-		printInfo("Key Share:  Index %d (%d bytes)", cfg.ShareIndex, len(cfg.LocalShare))
+		logging.Infof("Key share: Index %d (%d bytes)", cfg.ShareIndex, len(cfg.LocalShare))
 	} else {
-		printInfo("Key Share:  Not configured")
+		logging.Info("Key share: Not configured")
 	}
 
 	if cfg.IsOwner() {
 		if cfg.Password != "" {
-			printInfo("Password:   ✅ Stored (can backup)")
+			logging.Info("Password: Stored (can backup)")
 		} else {
-			printInfo("Password:   ❌ Missing")
+			logging.Warn("Password: Missing")
 		}
 	}
 
 	// Peer info
 	if cfg.Peer != nil {
-		peer := cfg.Peer.Name
+		peerInfo := cfg.Peer.Name
 		if cfg.Peer.Address != "" {
-			peer += fmt.Sprintf(" (%s)", cfg.Peer.Address)
+			peerInfo += " (" + cfg.Peer.Address + ")"
 		}
-		printInfo("Peer:       %s", peer)
+		logging.Info("Peer", logging.String("peer", peerInfo))
 	} else {
-		printInfo("Peer:       Not configured")
+		logging.Info("Peer: Not configured")
 	}
 
 	// Schedule
 	if cfg.BackupSchedule != "" {
-		printInfo("Schedule:   %s", cfg.BackupSchedule)
-		if len(cfg.BackupPaths) > 0 {
-			printInfo("Paths:      %s", strings.Join(cfg.BackupPaths, ", "))
-		}
+		logging.Info("Schedule",
+			logging.String("schedule", cfg.BackupSchedule),
+			logging.String("paths", strings.Join(cfg.BackupPaths, ", ")))
 	} else {
-		printInfo("Schedule:   Not configured")
+		logging.Info("Schedule: Not configured")
 	}
 
 	// Restic
 	if restic.IsInstalled() {
 		ver, _ := restic.Version()
-		printInfo("Restic:     %s", ver)
+		logging.Info("Restic", logging.String("version", ver))
 	} else {
-		printInfo("Restic:     ❌ Not installed")
+		logging.Warn("Restic: Not installed")
 	}
 
 	// Pending requests
 	mgr := consent.NewManager(cfg.ConfigDir)
 	pending, _ := mgr.ListPending()
-	printInfo("Pending:    %d restore request(s)", len(pending))
+	logging.Info("Pending restore requests", logging.Int("count", len(pending)))
 
 	// Emergency features
 	if cfg.HasEmergencyConfig() {
-		fmt.Println()
-		printInfo("Emergency Features:")
+		logging.Info("Emergency features:")
 
 		if cfg.Emergency.Recovery != nil && cfg.Emergency.Recovery.Enabled {
-			printInfo("  • Recovery shares: %d-of-%d", cfg.Emergency.Recovery.Threshold, cfg.Emergency.Recovery.TotalShares)
+			logging.Infof("  Recovery shares: %d-of-%d", cfg.Emergency.Recovery.Threshold, cfg.Emergency.Recovery.TotalShares)
 			if len(cfg.Emergency.Recovery.Custodians) > 0 {
-				printInfo("  • Custodians: %d configured", len(cfg.Emergency.Recovery.Custodians))
+				logging.Infof("  Custodians: %d configured", len(cfg.Emergency.Recovery.Custodians))
 			}
 		}
 
 		if cfg.Emergency.DeadManSwitch != nil && cfg.Emergency.DeadManSwitch.Enabled {
 			dms := cfg.Emergency.DeadManSwitch
-			printInfo("  • Dead man's switch: %d days (triggers in %d days)", dms.InactivityDays, dms.DaysUntilTrigger())
+			logging.Infof("  Dead man's switch: %d days (triggers in %d days)", dms.InactivityDays, dms.DaysUntilTrigger())
 			if dms.IsWarning() {
-				printWarning("  WARNING: Approaching inactivity threshold!")
+				logging.Warn("  WARNING: Approaching inactivity threshold!")
 			}
 		}
 
 		if cfg.Emergency.Override != nil && cfg.Emergency.Override.Enabled {
-			printInfo("  • Override key: configured (%d allowed types)", len(cfg.Emergency.Override.AllowedTypes))
+			logging.Infof("  Override key: configured (%d allowed types)", len(cfg.Emergency.Override.AllowedTypes))
 		}
 
 		if cfg.Emergency.Notify != nil && cfg.Emergency.Notify.Enabled {
-			printInfo("  • Notifications: %d providers configured", len(cfg.Emergency.Notify.Providers))
+			logging.Infof("  Notifications: %d providers configured", len(cfg.Emergency.Notify.Providers))
 		}
 	}
 

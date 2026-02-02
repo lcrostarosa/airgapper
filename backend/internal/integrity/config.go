@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/lcrostarosa/airgapper/backend/internal/logging"
 )
 
 // VerificationConfig holds settings for scheduled integrity verification
@@ -264,14 +266,16 @@ func (msc *ManagedScheduledChecker) sendAlert(result *CheckResult) {
 	config := msc.configManager.Get()
 
 	// Log the alert locally
-	fmt.Printf("[INTEGRITY ALERT] Corruption detected in %s: %d corrupt, %d missing files\n",
-		result.RepoPath, result.CorruptFiles, result.MissingFiles)
+	logging.Error("Integrity alert: corruption detected",
+		logging.String("repoPath", result.RepoPath),
+		logging.Int("corruptFiles", result.CorruptFiles),
+		logging.Int("missingFiles", result.MissingFiles))
 
 	// If webhook is configured, try to POST to it
 	if config.AlertWebhook != "" {
 		// In a real implementation, you'd make an HTTP POST here
 		// For now, just log
-		fmt.Printf("[INTEGRITY ALERT] Would POST to webhook: %s\n", config.AlertWebhook)
+		logging.Warn("Would POST to webhook", logging.String("webhook", config.AlertWebhook))
 	}
 }
 

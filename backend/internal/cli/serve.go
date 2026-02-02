@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/lcrostarosa/airgapper/backend/internal/api"
 	"github.com/lcrostarosa/airgapper/backend/internal/config"
+	"github.com/lcrostarosa/airgapper/backend/internal/logging"
 	"github.com/lcrostarosa/airgapper/backend/internal/restic"
 	"github.com/lcrostarosa/airgapper/backend/internal/scheduler"
 )
@@ -81,20 +81,18 @@ func resolveAddr(cmd *cobra.Command) string {
 }
 
 func printServerInfo(serveCfg *config.Config, addr string) {
-	printHeader("Airgapper Server")
-	printInfo("Name: %s", serveCfg.Name)
-	printInfo("Role: %s", serveCfg.Role)
-	printInfo("API:  http://localhost%s", addr)
-	fmt.Println()
+	logging.Info("Airgapper server starting",
+		logging.String("name", serveCfg.Name),
+		logging.String("role", string(serveCfg.Role)),
+		logging.String("api", "http://localhost"+addr))
 
-	printInfo("Endpoints:")
-	printInfo("  GET  /health               - Health check")
-	printInfo("  GET  /api/status           - System status")
-	printInfo("  GET  /api/requests         - List pending requests")
-	printInfo("  POST /api/requests         - Create restore request")
-	printInfo("  POST /api/requests/{id}/approve - Approve request")
-	printInfo("  POST /api/requests/{id}/deny    - Deny request")
-	fmt.Println()
+	logging.Info("Endpoints available:")
+	logging.Info("  GET  /health               - Health check")
+	logging.Info("  GET  /api/status           - System status")
+	logging.Info("  GET  /api/requests         - List pending requests")
+	logging.Info("  POST /api/requests         - Create restore request")
+	logging.Info("  POST /api/requests/{id}/approve - Approve request")
+	logging.Info("  POST /api/requests/{id}/deny    - Deny request")
 }
 
 func setupScheduler(cmd *cobra.Command, serveCfg *config.Config, server *api.Server) *scheduler.Scheduler {
@@ -115,16 +113,14 @@ func setupScheduler(cmd *cobra.Command, serveCfg *config.Config, server *api.Ser
 
 	if scheduleExpr == "" || len(backupPaths) == 0 {
 		if scheduleExpr == "" {
-			printInfo("No backup schedule configured.")
-			printInfo("   Configure with: airgapper schedule --set daily ~/Documents")
-			fmt.Println()
+			logging.Info("No backup schedule configured - configure with: airgapper schedule --set daily ~/Documents")
 		}
 		return nil
 	}
 
 	parsedSched, err := scheduler.ParseSchedule(scheduleExpr)
 	if err != nil {
-		printWarning("Invalid schedule: %v", err)
+		logging.Warn("Invalid schedule", logging.Err(err))
 		return nil
 	}
 
@@ -140,33 +136,31 @@ func setupScheduler(cmd *cobra.Command, serveCfg *config.Config, server *api.Ser
 	sched := scheduler.NewScheduler(parsedSched, backupFunc)
 	server.SetScheduler(sched)
 
-	printInfo("Scheduled Backups:")
-	printInfo("  Schedule: %s", scheduleExpr)
-	printInfo("  Paths:    %s", strings.Join(backupPaths, ", "))
 	nextRun := parsedSched.NextRun(time.Now())
-	printInfo("  Next:     %s", nextRun.Format("2006-01-02 15:04:05"))
-	fmt.Println()
+	logging.Info("Scheduled backups enabled",
+		logging.String("schedule", scheduleExpr),
+		logging.String("paths", strings.Join(backupPaths, ", ")),
+		logging.String("nextRun", nextRun.Format("2006-01-02 15:04:05")))
 
 	sched.Start()
 	return sched
 }
 
 func runServer(server *api.Server, sched *scheduler.Scheduler) error {
-	printInfo("Press Ctrl+C to stop")
-	fmt.Println()
+	logging.Info("Press Ctrl+C to stop")
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
 		if err := server.Start(); err != nil && err != http.ErrServerClosed {
-			fmt.Fprintf(os.Stderr, "Server error: %v\n", err)
+			logging.Error("Server error", logging.Err(err))
 			os.Exit(1)
 		}
 	}()
 
 	<-stop
-	fmt.Println("\nShutting down...")
+	logging.Info("Shutting down...")
 
 	if sched != nil {
 		sched.Stop()
@@ -176,9 +170,9 @@ func runServer(server *api.Server, sched *scheduler.Scheduler) error {
 	defer cancel()
 
 	if err := server.Shutdown(ctx); err != nil {
-		return fmt.Errorf("shutdown error: %w", err)
+		return err
 	}
 
-	printInfo("Server stopped.")
+	logging.Info("Server stopped")
 	return nil
 }

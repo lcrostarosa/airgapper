@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/lcrostarosa/airgapper/backend/internal/emergency"
+	"github.com/lcrostarosa/airgapper/backend/internal/logging"
 	"github.com/lcrostarosa/airgapper/backend/internal/sss"
 )
 
@@ -35,9 +36,8 @@ func runHeartbeat(cmd *cobra.Command, args []string) error {
 
 	dms := cfg.Emergency.GetDeadManSwitch()
 	if !dms.IsEnabled() {
-		printInfo("Dead man's switch is not enabled.")
-		printInfo("\nTo enable, reinitialize with:")
-		printInfo("  airgapper init --dead-man-switch 180d ...")
+		logging.Info("Dead man's switch is not enabled")
+		logging.Info("To enable, reinitialize with: airgapper init --dead-man-switch 180d ...")
 		return nil
 	}
 
@@ -45,10 +45,10 @@ func runHeartbeat(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to record activity: %w", err)
 	}
 
-	printSuccess("Heartbeat recorded!")
-	printInfo("Last activity: %s", dms.LastActivity.Format("2006-01-02 15:04:05"))
-	printInfo("Inactivity threshold: %d days", dms.InactivityDays)
-	printInfo("Days until trigger: %d", dms.DaysUntilTrigger())
+	logging.Info("Heartbeat recorded",
+		logging.String("lastActivity", dms.LastActivity.Format("2006-01-02 15:04:05")),
+		logging.Int("inactivityThreshold", dms.InactivityDays),
+		logging.Int("daysUntilTrigger", dms.DaysUntilTrigger()))
 
 	return nil
 }
@@ -108,15 +108,12 @@ func runExportShare(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("share index %d not found", shareIndex)
 	}
 
-	printHeader(fmt.Sprintf("Exporting Share %d", shareIndex))
-	fmt.Println()
-	printInfo("Share: %s", hex.EncodeToString(targetShare.Data))
-	printInfo("Index: %d", targetShare.Index)
-	printInfo("Repo:  %s", cfg.RepoURL)
-	fmt.Println()
-	fmt.Println(strings.Repeat("=", 70))
-	printWarning("This share is part of a %d-of-%d scheme.", k, n)
-	printInfo("   Any %d shares can decrypt your backups - store securely!", k)
+	logging.Info("Exporting share",
+		logging.Int("index", shareIndex),
+		logging.String("share", hex.EncodeToString(targetShare.Data)),
+		logging.String("repo", cfg.RepoURL))
+
+	logging.Warnf("This share is part of a %d-of-%d scheme. Any %d shares can decrypt your backups - store securely!", k, n, k)
 
 	return nil
 }
@@ -188,8 +185,8 @@ func runOverrideSetup(cmd *cobra.Command, args []string) error {
 	}
 
 	if cfg.Emergency.GetOverride().HasKey() {
-		printWarning("Override key already configured!")
-		printInfo("   To reset, remove ~/.airgapper/config.json and reinitialize.")
+		logging.Warn("Override key already configured")
+		logging.Info("To reset, remove ~/.airgapper/config.json and reinitialize")
 		return nil
 	}
 
@@ -207,19 +204,12 @@ func runOverrideSetup(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
-	printHeader("Override Key Generated")
-	fmt.Println()
-	printInfo("Override Key: %s", key)
-	fmt.Println()
-	fmt.Println(strings.Repeat("=", 70))
-	fmt.Println()
-	printWarning("IMPORTANT: Store this key securely!")
-	printInfo("   - This key is shown ONCE and cannot be recovered")
-	printInfo("   - Store in a safe deposit box, with a lawyer, etc.")
-	printInfo("   - Anyone with this key can bypass security controls")
-	fmt.Println()
-	printInfo("Use with:")
-	printInfo("  airgapper restore --override-key %s --reason \"...\"", key)
+	logging.Info("Override key generated", logging.String("key", key))
+	logging.Warn("IMPORTANT: Store this key securely!")
+	logging.Info("  - This key is shown ONCE and cannot be recovered")
+	logging.Info("  - Store in a safe deposit box, with a lawyer, etc.")
+	logging.Info("  - Anyone with this key can bypass security controls")
+	logging.Infof("Use with: airgapper restore --override-key %s --reason \"...\"", key)
 
 	return nil
 }
@@ -242,7 +232,7 @@ func runOverrideAllow(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
-	printSuccess("Override type '%s' is now allowed", overrideType)
+	logging.Info("Override type allowed", logging.String("type", overrideType))
 	return nil
 }
 
@@ -255,7 +245,7 @@ func runOverrideDeny(cmd *cobra.Command, args []string) error {
 
 	override := cfg.Emergency.GetOverride()
 	if override == nil {
-		printInfo("No override configuration found")
+		logging.Info("No override configuration found")
 		return nil
 	}
 
@@ -265,7 +255,7 @@ func runOverrideDeny(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
-	printSuccess("Override type '%s' is now denied", overrideType)
+	logging.Info("Override type denied", logging.String("type", overrideType))
 	return nil
 }
 
@@ -276,25 +266,23 @@ func runOverrideList(cmd *cobra.Command, args []string) error {
 
 	o := cfg.Emergency.GetOverride()
 	if !o.IsEnabled() {
-		printInfo("Override system is not configured.")
-		fmt.Println()
-		printInfo("To enable, run:")
-		printInfo("  airgapper override setup")
+		logging.Info("Override system is not configured")
+		logging.Info("To enable, run: airgapper override setup")
 		return nil
 	}
 
-	printHeader("Override Configuration")
-	printInfo("Enabled: %v", o.Enabled)
-	printInfo("Key configured: %v", o.HasKey())
-	printInfo("Require reason: %v", o.RequireReason)
-	printInfo("Notify on override: %v", o.NotifyOnUse)
-	fmt.Println()
-	printInfo("Allowed override types:")
+	logging.Info("Override configuration",
+		logging.Bool("enabled", o.Enabled),
+		logging.Bool("keyConfigured", o.HasKey()),
+		logging.Bool("requireReason", o.RequireReason),
+		logging.Bool("notifyOnUse", o.NotifyOnUse))
+
 	if len(o.AllowedTypes) == 0 {
-		printInfo("  (none)")
+		logging.Info("Allowed override types: (none)")
 	} else {
+		logging.Info("Allowed override types:")
 		for _, ot := range o.AllowedTypes {
-			printInfo("  ✅ %s", ot)
+			logging.Infof("  - %s", ot)
 		}
 	}
 	return nil
@@ -309,14 +297,14 @@ func runOverrideAudit(cmd *cobra.Command, args []string) error {
 	data, err := os.ReadFile(auditPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			printInfo("No override audit log found (no overrides have been used).")
+			logging.Info("No override audit log found (no overrides have been used)")
 			return nil
 		}
 		return err
 	}
 
-	printHeader("Override Audit Log")
-	fmt.Println(string(data))
+	logging.Info("Override audit log")
+	logging.Infof("%s", string(data))
 	return nil
 }
 
@@ -453,10 +441,10 @@ func runNotifyAdd(cmd *cobra.Command, args []string) error {
 	}
 
 	if dryRun {
-		printInfo("Dry-run: Would add notification provider:")
-		printInfo("  ID: %s", providerID)
-		printInfo("  Type: %s", providerType)
-		printInfo("  Priority: %s", priority)
+		logging.Info("Dry-run: Would add notification provider",
+			logging.String("id", providerID),
+			logging.String("type", providerType),
+			logging.String("priority", priority))
 		return nil
 	}
 
@@ -466,7 +454,9 @@ func runNotifyAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
-	printSuccess("Added notification provider: %s (%s)", providerID, providerType)
+	logging.Info("Added notification provider",
+		logging.String("id", providerID),
+		logging.String("type", providerType))
 	return nil
 }
 
@@ -488,7 +478,7 @@ func runNotifyRemove(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
-	printSuccess("Removed notification provider: %s", providerID)
+	logging.Info("Removed notification provider", logging.String("id", providerID))
 	return nil
 }
 
@@ -499,21 +489,24 @@ func runNotifyList(cmd *cobra.Command, args []string) error {
 
 	notify := cfg.Emergency.GetNotify()
 	if !notify.HasProviders() {
-		printInfo("No notification providers configured.")
-		fmt.Println()
-		printInfo("Add a provider with:")
-		printInfo("  airgapper notify add pushover --api-token xxx --user-key yyy")
-		printInfo("  airgapper notify add ntfy --server https://ntfy.sh --topic mybackups")
+		logging.Info("No notification providers configured")
+		logging.Info("Add a provider with:")
+		logging.Info("  airgapper notify add pushover --api-token xxx --user-key yyy")
+		logging.Info("  airgapper notify add ntfy --server https://ntfy.sh --topic mybackups")
 		return nil
 	}
 
-	printHeader("Notification Providers")
+	logging.Info("Notification providers")
 	for id, provider := range notify.Providers {
-		status := "✅"
+		status := "enabled"
 		if !provider.Enabled {
-			status = "❌"
+			status = "disabled"
 		}
-		printInfo("%s %s (%s) - Priority: %s", status, id, provider.Type, provider.Priority)
+		logging.Info("Provider",
+			logging.String("id", id),
+			logging.String("type", provider.Type),
+			logging.String("status", status),
+			logging.String("priority", provider.Priority))
 	}
 	return nil
 }
@@ -528,11 +521,10 @@ func runNotifyTest(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no notification providers configured")
 	}
 
-	printInfo("Sending test notification...")
-	printInfo("Configured providers: %d", notify.ProviderCount())
-	fmt.Println()
-	printWarning("Note: Full notification delivery requires the notification service.")
-	printInfo("   Test messages will be sent when 'airgapper serve' is running.")
+	logging.Info("Sending test notification",
+		logging.Int("providers", notify.ProviderCount()))
+	logging.Warn("Note: Full notification delivery requires the notification service")
+	logging.Info("Test messages will be sent when 'airgapper serve' is running")
 	return nil
 }
 
@@ -556,19 +548,19 @@ func runNotifyEvents(cmd *cobra.Command, args []string) error {
 	// If no flags, show current config
 	if !all && !none && !f.Changed("backup-started") && !f.Changed("backup-completed") {
 		events := e.Notify.Events
-		printHeader("Notification Events")
-		printInfo("Backup Started:      %v", events.BackupStarted)
-		printInfo("Backup Completed:    %v", events.BackupCompleted)
-		printInfo("Backup Failed:       %v", events.BackupFailed)
-		printInfo("Restore Requested:   %v", events.RestoreRequested)
-		printInfo("Restore Approved:    %v", events.RestoreApproved)
-		printInfo("Restore Denied:      %v", events.RestoreDenied)
-		printInfo("Deletion Requested:  %v", events.DeletionRequested)
-		printInfo("Deletion Approved:   %v", events.DeletionApproved)
-		printInfo("Consensus Received:  %v", events.ConsensusReceived)
-		printInfo("Emergency Triggered: %v", events.EmergencyTriggered)
-		printInfo("Dead Man Warning:    %v", events.DeadManWarning)
-		printInfo("Heartbeat Missed:    %v", events.HeartbeatMissed)
+		logging.Info("Notification events",
+			logging.Bool("backupStarted", events.BackupStarted),
+			logging.Bool("backupCompleted", events.BackupCompleted),
+			logging.Bool("backupFailed", events.BackupFailed),
+			logging.Bool("restoreRequested", events.RestoreRequested),
+			logging.Bool("restoreApproved", events.RestoreApproved),
+			logging.Bool("restoreDenied", events.RestoreDenied),
+			logging.Bool("deletionRequested", events.DeletionRequested),
+			logging.Bool("deletionApproved", events.DeletionApproved),
+			logging.Bool("consensusReceived", events.ConsensusReceived),
+			logging.Bool("emergencyTriggered", events.EmergencyTriggered),
+			logging.Bool("deadManWarning", events.DeadManWarning),
+			logging.Bool("heartbeatMissed", events.HeartbeatMissed))
 		return nil
 	}
 
@@ -605,6 +597,6 @@ func runNotifyEvents(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
-	printSuccess("Event notification settings updated")
+	logging.Info("Event notification settings updated")
 	return nil
 }

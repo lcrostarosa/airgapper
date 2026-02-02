@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/lcrostarosa/airgapper/backend/internal/consent"
+	"github.com/lcrostarosa/airgapper/backend/internal/logging"
 	"github.com/lcrostarosa/airgapper/backend/internal/restic"
 	"github.com/lcrostarosa/airgapper/backend/internal/sss"
 )
@@ -67,22 +68,22 @@ func runRestore(cmd *cobra.Command, args []string) error {
 		{Index: peerIndex, Data: req.ShareData},
 	}
 
-	fmt.Println("Reconstructing password from key shares...")
+	logging.Info("Reconstructing password from key shares")
 	password, err := sss.Combine(shares)
 	if err != nil {
 		return fmt.Errorf("failed to reconstruct password: %w", err)
 	}
 
-	fmt.Println("Password reconstructed successfully")
-	fmt.Println("Starting restore...")
-	fmt.Printf("Snapshot: %s\n", req.SnapshotID)
-	fmt.Printf("Target:   %s\n\n", target)
+	logging.Info("Password reconstructed successfully")
+	logging.Info("Starting restore",
+		logging.String("snapshot", req.SnapshotID),
+		logging.String("target", target))
 
 	client := restic.NewClient(cfg.RepoURL, string(password))
 	if err := client.Restore(req.SnapshotID, target); err != nil {
 		return fmt.Errorf("restore failed: %w", err)
 	}
 
-	fmt.Printf("Restore complete! Files restored to: %s\n", target)
+	logging.Info("Restore complete", logging.String("target", target))
 	return nil
 }
