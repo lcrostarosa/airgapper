@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package airgapper.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// StorageService handles storage server management
+service StorageService {
+  // GetStorageStatus gets the storage server status
+  rpc GetStorageStatus(GetStorageStatusRequest) returns (GetStorageStatusResponse);
+
+  // StartStorage starts the storage server
+  rpc StartStorage(StartStorageRequest) returns (StartStorageResponse);
+
+  // StopStorage stops the storage server
+  rpc StopStorage(StopStorageRequest) returns (StopStorageResponse);
+}
+
+message GetStorageStatusRequest {}
+
+message GetStorageStatusResponse {
+  bool configured = 1;
+  bool running = 2;
+  google.protobuf.Timestamp start_time = 3;
+  string base_path = 4;
+  bool append_only = 5;
+  int64 quota_bytes = 6;
+  int64 used_bytes = 7;
+  int64 request_count = 8;
+  bool has_policy = 9;
+  string policy_id = 10;
+  int32 max_disk_usage_pct = 11;
+  int32 disk_usage_pct = 12;
+  int64 disk_free_bytes = 13;
+  int64 disk_total_bytes = 14;
+}
+
+message StartStorageRequest {}
+
+message StartStorageResponse {
+  string status = 1;
+}
+
+message StopStorageRequest {}
+
+message StopStorageResponse {
+  string status = 1;
+}

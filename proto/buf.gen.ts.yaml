@@ -1,0 +1,11 @@
+version: v2
+plugins:
+  # TypeScript/ES message and service generation (v2 combines both)
+  - local:
+      - npx
+      - -p
+      - "@bufbuild/protoc-gen-es@^2"
+      - protoc-gen-es
+    out: ../frontend/src/gen
+    opt:
+      - target=ts

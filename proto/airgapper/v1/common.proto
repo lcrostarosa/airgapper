@@ -1,0 +1,127 @@
+syntax = "proto3";
+
+package airgapper.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// ============================================================================
+// Common Response Types
+// ============================================================================
+
+// StatusMessage is a simple status response
+message StatusMessage {
+  string status = 1;
+  string message = 2;
+}
+
+// ErrorDetail provides structured error information
+message ErrorDetail {
+  string code = 1;
+  string message = 2;
+  string field = 3; // For validation errors
+}
+
+// ============================================================================
+// Approval Types
+// ============================================================================
+
+// Approval represents a single approval/signature on a request
+message Approval {
+  string key_holder_id = 1;
+  string key_holder_name = 2;
+  string signature = 3;
+  google.protobuf.Timestamp approved_at = 4;
+}
+
+// ApprovalProgress shows the current state of multi-signature approval
+message ApprovalProgress {
+  string status = 1;
+  int32 current_approvals = 2;
+  int32 required_approvals = 3;
+  bool is_approved = 4;
+}
+
+// ============================================================================
+// Key Holder Types
+// ============================================================================
+
+// KeyHolder represents a participant in the consensus system
+message KeyHolder {
+  string id = 1;
+  string name = 2;
+  string public_key = 3;
+  string address = 4;
+  google.protobuf.Timestamp joined_at = 5;
+  bool is_owner = 6;
+}
+
+// ConsensusInfo describes the consensus configuration
+message ConsensusInfo {
+  int32 threshold = 1;       // m in m-of-n
+  int32 total_keys = 2;      // n in m-of-n
+  repeated KeyHolder key_holders = 3;
+  bool require_approval = 4; // For 1/1 solo mode
+}
+
+// ============================================================================
+// Peer Types
+// ============================================================================
+
+// Peer represents a connected peer in the system
+message Peer {
+  string name = 1;
+  string address = 2;
+}
+
+// ============================================================================
+// Enums
+// ============================================================================
+
+// Role identifies whether a node is an owner or host
+enum Role {
+  ROLE_UNSPECIFIED = 0;
+  ROLE_OWNER = 1;
+  ROLE_HOST = 2;
+}
+
+// RequestStatus is the status of a restore or deletion request
+enum RequestStatus {
+  REQUEST_STATUS_UNSPECIFIED = 0;
+  REQUEST_STATUS_PENDING = 1;
+  REQUEST_STATUS_APPROVED = 2;
+  REQUEST_STATUS_DENIED = 3;
+  REQUEST_STATUS_EXPIRED = 4;
+}
+
+// DeletionType specifies what is being deleted
+enum DeletionType {
+  DELETION_TYPE_UNSPECIFIED = 0;
+  DELETION_TYPE_SNAPSHOT = 1;
+  DELETION_TYPE_PATH = 2;
+  DELETION_TYPE_PRUNE = 3;
+  DELETION_TYPE_ALL = 4;
+}
+
+// DeletionMode specifies who can initiate deletions
+enum DeletionMode {
+  DELETION_MODE_UNSPECIFIED = 0;
+  DELETION_MODE_BOTH_REQUIRED = 1;
+  DELETION_MODE_OWNER_ONLY = 2;
+  DELETION_MODE_TIME_LOCK_ONLY = 3;
+  DELETION_MODE_NEVER = 4;
+}
+
+// OperationMode identifies the consensus mode
+enum OperationMode {
+  OPERATION_MODE_UNSPECIFIED = 0;
+  OPERATION_MODE_NONE = 1;
+  OPERATION_MODE_SSS = 2;
+  OPERATION_MODE_CONSENSUS = 3;
+}
+
+// CheckType specifies the type of integrity check
+enum CheckType {
+  CHECK_TYPE_UNSPECIFIED = 0;
+  CHECK_TYPE_QUICK = 1;
+  CHECK_TYPE_FULL = 2;
+}

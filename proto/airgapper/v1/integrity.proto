@@ -1,0 +1,158 @@
+syntax = "proto3";
+
+package airgapper.v1;
+
+import "airgapper/v1/common.proto";
+import "google/protobuf/timestamp.proto";
+
+// IntegrityService handles data integrity verification
+service IntegrityService {
+  // CheckIntegrity performs a quick integrity check
+  rpc CheckIntegrity(CheckIntegrityRequest) returns (CheckIntegrityResponse);
+
+  // RunFullCheck performs a full integrity check
+  rpc RunFullCheck(RunFullCheckRequest) returns (RunFullCheckResponse);
+
+  // GetIntegrityRecords gets integrity records
+  rpc GetIntegrityRecords(GetIntegrityRecordsRequest) returns (GetIntegrityRecordsResponse);
+
+  // CreateIntegrityRecord creates a new integrity record
+  rpc CreateIntegrityRecord(CreateIntegrityRecordRequest) returns (CreateIntegrityRecordResponse);
+
+  // AddIntegrityRecord adds to an existing integrity record
+  rpc AddIntegrityRecord(AddIntegrityRecordRequest) returns (AddIntegrityRecordResponse);
+
+  // GetIntegrityHistory gets integrity check history
+  rpc GetIntegrityHistory(GetIntegrityHistoryRequest) returns (GetIntegrityHistoryResponse);
+
+  // GetVerificationConfig gets the verification configuration
+  rpc GetVerificationConfig(GetVerificationConfigRequest) returns (GetVerificationConfigResponse);
+
+  // UpdateVerificationConfig updates the verification configuration
+  rpc UpdateVerificationConfig(UpdateVerificationConfigRequest) returns (UpdateVerificationConfigResponse);
+
+  // RunManualCheck runs a manual integrity check
+  rpc RunManualCheck(RunManualCheckRequest) returns (RunManualCheckResponse);
+}
+
+// IntegrityCheckResult represents the result of an integrity check
+message IntegrityCheckResult {
+  google.protobuf.Timestamp timestamp = 1;
+  bool passed = 2;
+  int32 total_files = 3;
+  int32 checked_files = 4;
+  int32 corrupt_files = 5;
+  int32 missing_files = 6;
+  string duration = 7;
+  repeated string errors = 8;
+}
+
+message CheckIntegrityRequest {}
+
+message CheckIntegrityResponse {
+  string status = 1;
+  bool storage_running = 2;
+  int64 used_bytes = 3;
+  int32 disk_usage_pct = 4;
+  int64 disk_free_bytes = 5;
+  bool has_policy = 6;
+  string policy_id = 7;
+  int64 request_count = 8;
+  IntegrityCheckResult last_check = 9;
+}
+
+message RunFullCheckRequest {}
+
+message RunFullCheckResponse {
+  string status = 1;
+  IntegrityCheckResult result = 2;
+}
+
+message GetIntegrityRecordsRequest {
+  string repo_name = 1;
+  string snapshot_id = 2;
+}
+
+// IntegrityRecord represents stored integrity metadata
+message IntegrityRecord {
+  string repo_name = 1;
+  string snapshot_id = 2;
+  string owner_key_id = 3;
+  string hash = 4;
+  google.protobuf.Timestamp created_at = 5;
+}
+
+message GetIntegrityRecordsResponse {
+  repeated IntegrityRecord records = 1;
+}
+
+message CreateIntegrityRecordRequest {
+  string repo_name = 1;
+  string snapshot_id = 2;
+  string owner_key_id = 3;
+}
+
+message CreateIntegrityRecordResponse {
+  string status = 1;
+  string message = 2;
+}
+
+message AddIntegrityRecordRequest {
+  string repo_name = 1;
+  string snapshot_id = 2;
+  string owner_key_id = 3;
+}
+
+message AddIntegrityRecordResponse {
+  string status = 1;
+  string message = 2;
+}
+
+message GetIntegrityHistoryRequest {
+  int32 limit = 1;
+}
+
+message GetIntegrityHistoryResponse {
+  repeated IntegrityCheckResult history = 1;
+}
+
+message GetVerificationConfigRequest {}
+
+message GetVerificationConfigResponse {
+  bool enabled = 1;
+  string interval = 2;
+  string check_type = 3;
+  string repo_name = 4;
+  string snapshot_id = 5;
+  bool alert_on_corruption = 6;
+  string alert_webhook = 7;
+  int32 consecutive_failures = 8;
+  google.protobuf.Timestamp last_check = 9;
+  IntegrityCheckResult last_result = 10;
+}
+
+message UpdateVerificationConfigRequest {
+  optional bool enabled = 1;
+  optional string interval = 2;
+  optional string check_type = 3;
+  optional string repo_name = 4;
+  optional string snapshot_id = 5;
+  optional bool alert_on_corruption = 6;
+  optional string alert_webhook = 7;
+}
+
+message UpdateVerificationConfigResponse {
+  string status = 1;
+  string message = 2;
+  GetVerificationConfigResponse config = 3;
+}
+
+message RunManualCheckRequest {
+  CheckType check_type = 1;
+}
+
+message RunManualCheckResponse {
+  string status = 1;
+  string check_type = 2;
+  IntegrityCheckResult result = 3;
+}

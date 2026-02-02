@@ -1,0 +1,94 @@
+syntax = "proto3";
+
+package airgapper.v1;
+
+import "airgapper/v1/common.proto";
+import "google/protobuf/timestamp.proto";
+
+// DeletionService handles deletion request management
+service DeletionService {
+  // ListDeletions lists all deletion requests
+  rpc ListDeletions(ListDeletionsRequest) returns (ListDeletionsResponse);
+
+  // GetDeletion gets a specific deletion request
+  rpc GetDeletion(GetDeletionRequest) returns (GetDeletionResponse);
+
+  // CreateDeletion creates a new deletion request
+  rpc CreateDeletion(CreateDeletionRequest) returns (CreateDeletionResponse);
+
+  // ApproveDeletion approves a deletion request
+  rpc ApproveDeletion(ApproveDeletionRequest) returns (ApproveDeletionResponse);
+
+  // DenyDeletion denies a deletion request
+  rpc DenyDeletion(DenyDeletionRequest) returns (DenyDeletionResponse);
+}
+
+// DeletionRequest represents a request to delete data
+message DeletionRequest {
+  string id = 1;
+  string requester = 2;
+  DeletionType deletion_type = 3;
+  repeated string snapshot_ids = 4;
+  repeated string paths = 5;
+  string reason = 6;
+  RequestStatus status = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp expires_at = 9;
+  google.protobuf.Timestamp approved_at = 10;
+  google.protobuf.Timestamp executed_at = 11;
+  int32 required_approvals = 12;
+  int32 current_approvals = 13;
+  repeated Approval approvals = 14;
+}
+
+message ListDeletionsRequest {
+  // Optional filter by status
+  RequestStatus status_filter = 1;
+}
+
+message ListDeletionsResponse {
+  repeated DeletionRequest deletions = 1;
+}
+
+message GetDeletionRequest {
+  string id = 1;
+}
+
+message GetDeletionResponse {
+  DeletionRequest deletion = 1;
+}
+
+message CreateDeletionRequest {
+  DeletionType deletion_type = 1;
+  repeated string snapshot_ids = 2;
+  repeated string paths = 3;
+  string reason = 4;
+  int32 required_approvals = 5;
+}
+
+message CreateDeletionResponse {
+  string id = 1;
+  string status = 2;
+  google.protobuf.Timestamp expires_at = 3;
+}
+
+message ApproveDeletionRequest {
+  string id = 1;
+  string key_holder_id = 2;
+  string signature = 3;  // Hex encoded
+}
+
+message ApproveDeletionResponse {
+  string status = 1;
+  int32 current_approvals = 2;
+  int32 required_approvals = 3;
+  bool is_approved = 4;
+}
+
+message DenyDeletionRequest {
+  string id = 1;
+}
+
+message DenyDeletionResponse {
+  string status = 1;
+}

@@ -9,7 +9,8 @@ GO := go
 .PHONY: all build clean dev test help \
         frontend-dev frontend-build frontend-test frontend-lint frontend-install \
         backend-build backend-test backend-lint backend-fmt \
-        docker docker-compose-up docker-compose-down
+        docker docker-compose-up docker-compose-down \
+        proto proto-lint proto-generate
 
 all: build
 
@@ -97,6 +98,34 @@ docker-compose-down: ## Stop docker-compose stack
 
 docker-compose-logs: ## View docker-compose logs
 	docker-compose logs -f
+
+#------------------------------------------------------------------------------
+# Protobuf / gRPC Generation
+#------------------------------------------------------------------------------
+
+proto: proto-lint proto-generate ## Lint and generate protobuf code
+
+proto-lint: ## Lint proto files
+	@which buf > /dev/null || (echo "Installing buf..." && go install github.com/bufbuild/buf/cmd/buf@latest)
+	cd proto && buf lint
+
+proto-generate: proto-generate-go proto-generate-ts ## Generate Go and TypeScript code from proto files
+	@echo "✅ Generated Go code in backend/gen/"
+	@echo "✅ Generated TypeScript code in frontend/src/gen/"
+
+proto-generate-go: ## Generate Go code from proto files
+	@which buf > /dev/null || (echo "Installing buf..." && go install github.com/bufbuild/buf/cmd/buf@latest)
+	@which protoc-gen-go > /dev/null || go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+	@which protoc-gen-connect-go > /dev/null || go install connectrpc.com/connect/cmd/protoc-gen-connect-go@latest
+	cd proto && buf generate
+
+proto-generate-ts: ## Generate TypeScript code from proto files
+	@which buf > /dev/null || (echo "Installing buf..." && go install github.com/bufbuild/buf/cmd/buf@latest)
+	cd proto && buf generate --template buf.gen.ts.yaml
+
+proto-breaking: ## Check for breaking changes in proto files
+	@which buf > /dev/null || (echo "Installing buf..." && go install github.com/bufbuild/buf/cmd/buf@latest)
+	cd proto && buf breaking --against '.git#branch=main'
 
 #------------------------------------------------------------------------------
 # Development Helpers

@@ -1,0 +1,82 @@
+syntax = "proto3";
+
+package airgapper.v1;
+
+import "airgapper/v1/common.proto";
+import "google/protobuf/timestamp.proto";
+
+// PolicyService handles storage policy management
+service PolicyService {
+  // GetPolicy gets the current policy
+  rpc GetPolicy(GetPolicyRequest) returns (GetPolicyResponse);
+
+  // CreatePolicy creates a new policy
+  rpc CreatePolicy(CreatePolicyRequest) returns (CreatePolicyResponse);
+
+  // SignPolicy signs a policy
+  rpc SignPolicy(SignPolicyRequest) returns (SignPolicyResponse);
+}
+
+// Policy represents an agreed storage policy between owner and host
+message Policy {
+  string id = 1;
+  int32 version = 2;
+  string name = 3;
+  string owner_name = 4;
+  string owner_key_id = 5;
+  string owner_public_key = 6;
+  string host_name = 7;
+  string host_key_id = 8;
+  string host_public_key = 9;
+  int32 retention_days = 10;
+  DeletionMode deletion_mode = 11;
+  bool append_only_locked = 12;
+  int64 max_storage_bytes = 13;
+  google.protobuf.Timestamp created_at = 14;
+  google.protobuf.Timestamp effective_at = 15;
+  google.protobuf.Timestamp expires_at = 16;
+  string owner_signature = 17;
+  string host_signature = 18;
+}
+
+message GetPolicyRequest {}
+
+message GetPolicyResponse {
+  bool has_policy = 1;
+  Policy policy = 2;
+  string policy_json = 3;
+  bool is_fully_signed = 4;
+  bool is_active = 5;
+}
+
+message CreatePolicyRequest {
+  string owner_name = 1;
+  string owner_key_id = 2;
+  string owner_public_key = 3;
+  string host_name = 4;
+  string host_key_id = 5;
+  string host_public_key = 6;
+  int32 retention_days = 7;
+  DeletionMode deletion_mode = 8;
+  int64 max_storage_bytes = 9;
+  string owner_signature = 10;
+  string host_signature = 11;
+}
+
+message CreatePolicyResponse {
+  Policy policy = 1;
+  string policy_json = 2;
+  bool is_fully_signed = 3;
+}
+
+message SignPolicyRequest {
+  string policy_json = 1;
+  string signature = 2;
+  string signer_role = 3;  // "owner" or "host"
+}
+
+message SignPolicyResponse {
+  Policy policy = 1;
+  string policy_json = 2;
+  bool is_fully_signed = 3;
+}

@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package airgapper.v1;
+
+// NetworkService provides network utilities
+service NetworkService {
+  // GetLocalIP returns the local IP address of the server
+  rpc GetLocalIP(GetLocalIPRequest) returns (GetLocalIPResponse);
+}
+
+message GetLocalIPRequest {}
+
+message GetLocalIPResponse {
+  string ip = 1;
+}

@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package airgapper.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// ScheduleService handles backup scheduling
+service ScheduleService {
+  // GetSchedule gets the current backup schedule
+  rpc GetSchedule(GetScheduleRequest) returns (GetScheduleResponse);
+
+  // UpdateSchedule updates the backup schedule
+  rpc UpdateSchedule(UpdateScheduleRequest) returns (UpdateScheduleResponse);
+
+  // GetBackupHistory gets the backup history
+  rpc GetBackupHistory(GetBackupHistoryRequest) returns (GetBackupHistoryResponse);
+}
+
+message GetScheduleRequest {}
+
+message GetScheduleResponse {
+  string schedule = 1;
+  repeated string paths = 2;
+  bool enabled = 3;
+  google.protobuf.Timestamp last_run = 4;
+  google.protobuf.Timestamp next_run = 5;
+  string last_error = 6;
+}
+
+message UpdateScheduleRequest {
+  string schedule = 1;
+  repeated string paths = 2;
+}
+
+message UpdateScheduleResponse {
+  string status = 1;
+  string message = 2;
+  bool hot_reloaded = 3;
+}
+
+message GetBackupHistoryRequest {
+  int32 limit = 1;  // Max number of results to return
+}
+
+// BackupResult represents a single backup execution result
+message BackupResult {
+  google.protobuf.Timestamp scheduled_time = 1;
+  google.protobuf.Timestamp start_time = 2;
+  google.protobuf.Timestamp end_time = 3;
+  int64 duration_ms = 4;
+  bool success = 5;
+  int32 attempt = 6;
+  bool is_retry = 7;
+  string error = 8;
+}
+
+message GetBackupHistoryResponse {
+  repeated BackupResult history = 1;
+  int32 count = 2;
+}

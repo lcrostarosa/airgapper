@@ -1,0 +1,105 @@
+syntax = "proto3";
+
+package airgapper.v1;
+
+import "airgapper/v1/common.proto";
+import "google/protobuf/timestamp.proto";
+
+// RestoreRequestService handles restore request management
+service RestoreRequestService {
+  // ListRequests lists all restore requests
+  rpc ListRequests(ListRequestsRequest) returns (ListRequestsResponse);
+
+  // GetRequest gets a specific restore request
+  rpc GetRequest(GetRequestRequest) returns (GetRequestResponse);
+
+  // CreateRequest creates a new restore request
+  rpc CreateRequest(CreateRequestRequest) returns (CreateRequestResponse);
+
+  // ApproveRequest approves a restore request (legacy SSS mode)
+  rpc ApproveRequest(ApproveRequestRequest) returns (ApproveRequestResponse);
+
+  // SignRequest signs a restore request (consensus mode)
+  rpc SignRequest(SignRequestRequest) returns (SignRequestResponse);
+
+  // DenyRequest denies a restore request
+  rpc DenyRequest(DenyRequestRequest) returns (DenyRequestResponse);
+}
+
+// RestoreRequest represents a request to restore data
+message RestoreRequest {
+  string id = 1;
+  string requester = 2;
+  string snapshot_id = 3;
+  repeated string paths = 4;
+  string reason = 5;
+  RequestStatus status = 6;
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp expires_at = 8;
+  google.protobuf.Timestamp approved_at = 9;
+  string approved_by = 10;
+  int32 required_approvals = 11;
+  repeated Approval approvals = 12;
+}
+
+message ListRequestsRequest {
+  // Optional filter by status
+  RequestStatus status_filter = 1;
+}
+
+message ListRequestsResponse {
+  repeated RestoreRequest requests = 1;
+}
+
+message GetRequestRequest {
+  string id = 1;
+}
+
+message GetRequestResponse {
+  RestoreRequest request = 1;
+}
+
+message CreateRequestRequest {
+  string snapshot_id = 1;
+  repeated string paths = 2;
+  string reason = 3;
+}
+
+message CreateRequestResponse {
+  string id = 1;
+  string status = 2;
+  google.protobuf.Timestamp expires_at = 3;
+}
+
+message ApproveRequestRequest {
+  string id = 1;
+  // Share is optional - if not provided, server uses its local share
+  bytes share = 2;
+  int32 share_index = 3;
+}
+
+message ApproveRequestResponse {
+  string status = 1;
+  string message = 2;
+}
+
+message SignRequestRequest {
+  string id = 1;
+  string key_holder_id = 2;
+  string signature = 3;  // Hex encoded
+}
+
+message SignRequestResponse {
+  string status = 1;
+  int32 current_approvals = 2;
+  int32 required_approvals = 3;
+  bool is_approved = 4;
+}
+
+message DenyRequestRequest {
+  string id = 1;
+}
+
+message DenyRequestResponse {
+  string status = 1;
+}

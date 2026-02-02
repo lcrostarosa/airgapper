@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package airgapper.v1;
+
+import "airgapper/v1/common.proto";
+import "google/protobuf/timestamp.proto";
+
+// KeyHolderService handles key holder management for consensus mode
+service KeyHolderService {
+  // ListKeyHolders lists all registered key holders
+  rpc ListKeyHolders(ListKeyHoldersRequest) returns (ListKeyHoldersResponse);
+
+  // GetKeyHolder gets a specific key holder
+  rpc GetKeyHolder(GetKeyHolderRequest) returns (GetKeyHolderResponse);
+
+  // RegisterKeyHolder registers a new key holder
+  rpc RegisterKeyHolder(RegisterKeyHolderRequest) returns (RegisterKeyHolderResponse);
+}
+
+message ListKeyHoldersRequest {}
+
+message ListKeyHoldersResponse {
+  ConsensusInfo consensus = 1;
+}
+
+message GetKeyHolderRequest {
+  string id = 1;
+}
+
+message GetKeyHolderResponse {
+  KeyHolder key_holder = 1;
+}
+
+message RegisterKeyHolderRequest {
+  string name = 1;
+  string public_key = 2;  // Hex encoded
+  string address = 3;
+}
+
+message RegisterKeyHolderResponse {
+  string id = 1;
+  string name = 2;
+  google.protobuf.Timestamp joined_at = 3;
+}

@@ -8,6 +8,7 @@ import (
 
 	"github.com/lcrostarosa/airgapper/backend/internal/config"
 	"github.com/lcrostarosa/airgapper/backend/internal/consent"
+	"github.com/lcrostarosa/airgapper/backend/internal/grpc"
 	"github.com/lcrostarosa/airgapper/backend/internal/integrity"
 	"github.com/lcrostarosa/airgapper/backend/internal/logging"
 	"github.com/lcrostarosa/airgapper/backend/internal/scheduler"
@@ -18,6 +19,7 @@ import (
 // Server is the HTTP API server
 type Server struct {
 	httpServer              *http.Server
+	grpcServer              *grpc.Server
 	storageServer           *storage.Server
 	integrityChecker        *integrity.Checker
 	managedScheduledChecker *integrity.ManagedScheduledChecker
@@ -73,8 +75,23 @@ func NewServerWithOptions(cfg *config.Config, addr string, opts *ServerOptions) 
 		}
 	}
 
+	// Create the Connect-RPC (gRPC) server
+	grpcOpts := &grpc.ServerOptions{
+		StorageServer:    s.storageServer,
+		IntegrityChecker: s.integrityChecker,
+		ScheduledChecker: s.managedScheduledChecker,
+	}
+	s.grpcServer = grpc.NewServer(cfg, grpcOpts)
+
 	mux := http.NewServeMux()
+
+	// Register REST API routes (existing)
 	s.registerRoutes(mux)
+
+	// Register Connect-RPC handlers (new gRPC-compatible API)
+	// These are mounted at /airgapper.v1.<ServiceName>/<Method>
+	s.grpcServer.RegisterHandlers(mux)
+	logging.Infof("Connect-RPC handlers registered (gRPC-compatible API)")
 
 	s.httpServer = &http.Server{
 		Addr:         addr,
@@ -89,6 +106,9 @@ func NewServerWithOptions(cfg *config.Config, addr string, opts *ServerOptions) 
 // SetScheduler sets the backup scheduler
 func (s *Server) SetScheduler(sched *scheduler.Scheduler) {
 	s.statusSvc.SetScheduler(sched)
+	if s.grpcServer != nil {
+		s.grpcServer.SetScheduler(sched)
+	}
 }
 
 // Start starts the HTTP server
@@ -125,4 +145,9 @@ func (s *Server) IntegrityChecker() *integrity.Checker {
 // ManagedScheduledChecker returns the scheduled checker instance (may be nil)
 func (s *Server) ManagedScheduledChecker() *integrity.ManagedScheduledChecker {
 	return s.managedScheduledChecker
+}
+
+// GRPCServer returns the Connect-RPC server instance
+func (s *Server) GRPCServer() *grpc.Server {
+	return s.grpcServer
 }

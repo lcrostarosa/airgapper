@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import type { VaultConfig, VaultContract, Step } from "../types";
-import { getLocalIP, initHost, type HostInitResponse } from "../lib/api";
+import { getLocalIP, initHost, type InitHostResponse } from "../lib/client";
 import { useClipboard } from "../hooks/useClipboard";
 import { Alert, CopyableField, StepIndicator } from "./ui";
 
@@ -30,7 +30,7 @@ export function HostSetup({ onComplete, onNavigate }: HostSetupProps) {
   const [name, setName] = useState("");
 
   // Initialization state
-  const [initResult, setInitResult] = useState<HostInitResponse | null>(null);
+  const [initResult, setInitResult] = useState<InitHostResponse | null>(null);
   const [error, setError] = useState("");
   const [isInitializing, setIsInitializing] = useState(false);
   const { copiedId, copy } = useClipboard();
@@ -61,15 +61,16 @@ export function HostSetup({ onComplete, onNavigate }: HostSetupProps) {
     setIsInitializing(true);
 
     try {
-      // Convert quota to bytes
-      let quotaBytes: number | undefined;
+      // Convert quota to bytes (bigint for proto)
+      let quotaBytes: bigint | undefined;
       if (storageQuota) {
         const quotaNum = parseFloat(storageQuota);
         if (!isNaN(quotaNum) && quotaNum > 0) {
-          quotaBytes =
+          const bytes =
             storageQuotaUnit === "TB"
               ? quotaNum * 1024 * 1024 * 1024 * 1024
               : quotaNum * 1024 * 1024 * 1024;
+          quotaBytes = BigInt(Math.floor(bytes));
         }
       }
 
@@ -79,7 +80,7 @@ export function HostSetup({ onComplete, onNavigate }: HostSetupProps) {
         storageQuotaBytes: quotaBytes,
         appendOnly,
         restoreApproval,
-        retentionDays: retentionDays ? parseInt(retentionDays) : undefined,
+        retentionDays: retentionDays ? parseInt(retentionDays) : 0,
       });
 
       setInitResult(result);

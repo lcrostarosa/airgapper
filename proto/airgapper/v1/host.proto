@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+package airgapper.v1;
+
+// HostService handles host initialization and share exchange
+service HostService {
+  // InitHost initializes this node as a backup host
+  rpc InitHost(InitHostRequest) returns (InitHostResponse);
+
+  // ReceiveShare receives a key share from the vault owner (legacy SSS mode)
+  rpc ReceiveShare(ReceiveShareRequest) returns (ReceiveShareResponse);
+
+  // ListSnapshots lists available backup snapshots
+  rpc ListSnapshots(ListSnapshotsRequest) returns (ListSnapshotsResponse);
+}
+
+message InitHostRequest {
+  string name = 1;
+  string storage_path = 2;
+  int64 storage_quota_bytes = 3;
+  bool append_only = 4;
+  string restore_approval = 5;    // "both-required", "either", "owner-only", "host-only"
+  int32 retention_days = 6;
+}
+
+message InitHostResponse {
+  string name = 1;
+  string key_id = 2;
+  string public_key = 3;
+  string storage_url = 4;
+  string storage_path = 5;
+}
+
+message ReceiveShareRequest {
+  bytes share = 1;
+  int32 share_index = 2;
+  string repo_url = 3;
+  string peer_name = 4;
+}
+
+message ReceiveShareResponse {
+  string status = 1;
+  string message = 2;
+}
+
+message ListSnapshotsRequest {}
+
+message Snapshot {
+  string id = 1;
+  string short_id = 2;
+  string time = 3;
+  string hostname = 4;
+  repeated string paths = 5;
+  repeated string tags = 6;
+}
+
+message ListSnapshotsResponse {
+  repeated Snapshot snapshots = 1;
+}

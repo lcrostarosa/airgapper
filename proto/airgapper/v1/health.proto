@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package airgapper.v1;
+
+import "airgapper/v1/common.proto";
+import "google/protobuf/timestamp.proto";
+
+// HealthService provides health and status endpoints
+service HealthService {
+  // Check returns basic health status
+  rpc Check(CheckRequest) returns (CheckResponse);
+
+  // GetStatus returns detailed system status
+  rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
+}
+
+message CheckRequest {}
+
+message CheckResponse {
+  string status = 1;  // "ok" or "error"
+}
+
+message GetStatusRequest {}
+
+// SchedulerInfo contains backup scheduler status
+message SchedulerInfo {
+  bool enabled = 1;
+  string schedule = 2;
+  repeated string paths = 3;
+  google.protobuf.Timestamp last_run = 4;
+  google.protobuf.Timestamp next_run = 5;
+  string last_error = 6;
+}
+
+message GetStatusResponse {
+  string name = 1;
+  Role role = 2;
+  string repo_url = 3;
+  bool has_share = 4;
+  int32 share_index = 5;
+  int32 pending_requests = 6;
+  repeated string backup_paths = 7;
+  OperationMode mode = 8;
+  Peer peer = 9;
+  ConsensusInfo consensus = 10;
+  SchedulerInfo scheduler = 11;
+}

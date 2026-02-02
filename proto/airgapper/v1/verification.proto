@@ -1,0 +1,307 @@
+syntax = "proto3";
+
+package airgapper.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// VerificationService handles host verification, audit, challenges, tickets, and witness
+service VerificationService {
+  // GetVerificationStatus gets the current verification status
+  rpc GetVerificationStatus(GetVerificationStatusRequest) returns (GetVerificationStatusResponse);
+
+  // ============================================================================
+  // Audit Chain
+  // ============================================================================
+
+  // GetAuditEntries retrieves audit log entries
+  rpc GetAuditEntries(GetAuditEntriesRequest) returns (GetAuditEntriesResponse);
+
+  // VerifyAuditChain verifies the integrity of the audit chain
+  rpc VerifyAuditChain(VerifyAuditChainRequest) returns (VerifyAuditChainResponse);
+
+  // ExportAuditChain exports the audit chain
+  rpc ExportAuditChain(ExportAuditChainRequest) returns (ExportAuditChainResponse);
+
+  // ============================================================================
+  // Challenge-Response
+  // ============================================================================
+
+  // CreateChallenge creates a new challenge
+  rpc CreateChallenge(CreateChallengeRequest) returns (CreateChallengeResponse);
+
+  // ReceiveChallenge receives and stores a challenge from peer
+  rpc ReceiveChallenge(ReceiveChallengeRequest) returns (ReceiveChallengeResponse);
+
+  // ListChallenges lists all challenges
+  rpc ListChallenges(ListChallengesRequest) returns (ListChallengesResponse);
+
+  // RespondToChallenge responds to a challenge
+  rpc RespondToChallenge(RespondToChallengeRequest) returns (RespondToChallengeResponse);
+
+  // VerifyChallenge verifies a challenge response
+  rpc VerifyChallenge(VerifyChallengeRequest) returns (VerifyChallengeResponse);
+
+  // ============================================================================
+  // Deletion Tickets
+  // ============================================================================
+
+  // CreateTicket creates a new deletion ticket
+  rpc CreateTicket(CreateTicketRequest) returns (CreateTicketResponse);
+
+  // RegisterTicket registers a ticket received from peer
+  rpc RegisterTicket(RegisterTicketRequest) returns (RegisterTicketResponse);
+
+  // ListTickets lists all tickets
+  rpc ListTickets(ListTicketsRequest) returns (ListTicketsResponse);
+
+  // GetTicket gets a specific ticket
+  rpc GetTicket(GetTicketRequest) returns (GetTicketResponse);
+
+  // GetTicketUsage gets ticket usage information
+  rpc GetTicketUsage(GetTicketUsageRequest) returns (GetTicketUsageResponse);
+
+  // ============================================================================
+  // Witness Checkpoints
+  // ============================================================================
+
+  // SubmitWitnessCheckpoint submits a witness checkpoint
+  rpc SubmitWitnessCheckpoint(SubmitWitnessCheckpointRequest) returns (SubmitWitnessCheckpointResponse);
+
+  // CreateWitnessCheckpoint creates a new witness checkpoint
+  rpc CreateWitnessCheckpoint(CreateWitnessCheckpointRequest) returns (CreateWitnessCheckpointResponse);
+
+  // GetWitnessCheckpoint gets a specific witness checkpoint
+  rpc GetWitnessCheckpoint(GetWitnessCheckpointRequest) returns (GetWitnessCheckpointResponse);
+}
+
+// ============================================================================
+// Verification Status
+// ============================================================================
+
+message GetVerificationStatusRequest {}
+
+message GetVerificationStatusResponse {
+  string status = 1;
+  bool initialized = 2;
+  string last_verification = 3;
+  string next_verification = 4;
+}
+
+// ============================================================================
+// Audit Types
+// ============================================================================
+
+message AuditEntry {
+  string id = 1;
+  string action = 2;
+  string actor = 3;
+  string target = 4;
+  string details = 5;
+  string hash = 6;
+  string prev_hash = 7;
+  google.protobuf.Timestamp timestamp = 8;
+}
+
+message GetAuditEntriesRequest {
+  int32 limit = 1;
+  int32 offset = 2;
+  string action_filter = 3;
+}
+
+message GetAuditEntriesResponse {
+  repeated AuditEntry entries = 1;
+  int32 total = 2;
+}
+
+message VerifyAuditChainRequest {}
+
+message VerifyAuditChainResponse {
+  bool valid = 1;
+  int32 entries_checked = 2;
+  string first_invalid_id = 3;
+  string error = 4;
+}
+
+message ExportAuditChainRequest {
+  string format = 1;  // "json" or "csv"
+}
+
+message ExportAuditChainResponse {
+  bytes data = 1;
+  string content_type = 2;
+  string filename = 3;
+}
+
+// ============================================================================
+// Challenge Types
+// ============================================================================
+
+message Challenge {
+  string id = 1;
+  string challenger_id = 2;
+  string target_id = 3;
+  string nonce = 4;
+  string expected_response = 5;
+  string status = 6;  // "pending", "responded", "verified", "failed", "expired"
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp expires_at = 8;
+  google.protobuf.Timestamp responded_at = 9;
+  string response = 10;
+}
+
+message CreateChallengeRequest {
+  string target_id = 1;
+}
+
+message CreateChallengeResponse {
+  Challenge challenge = 1;
+}
+
+message ReceiveChallengeRequest {
+  string id = 1;
+  string challenger_id = 2;
+  string nonce = 3;
+  google.protobuf.Timestamp expires_at = 4;
+}
+
+message ReceiveChallengeResponse {
+  string status = 1;
+  string message = 2;
+}
+
+message ListChallengesRequest {
+  string status_filter = 1;
+}
+
+message ListChallengesResponse {
+  repeated Challenge challenges = 1;
+}
+
+message RespondToChallengeRequest {
+  string id = 1;
+  string response = 2;
+}
+
+message RespondToChallengeResponse {
+  string status = 1;
+  string message = 2;
+}
+
+message VerifyChallengeRequest {
+  string id = 1;
+  string response = 2;
+}
+
+message VerifyChallengeResponse {
+  bool valid = 1;
+  string status = 2;
+  string message = 3;
+}
+
+// ============================================================================
+// Ticket Types
+// ============================================================================
+
+message Ticket {
+  string id = 1;
+  string issuer_id = 2;
+  string issuer_name = 3;
+  string purpose = 4;  // "deletion", "restore", etc.
+  int32 max_uses = 5;
+  int32 current_uses = 6;
+  google.protobuf.Timestamp issued_at = 7;
+  google.protobuf.Timestamp expires_at = 8;
+  string signature = 9;
+  repeated string snapshot_ids = 10;
+  repeated string paths = 11;
+}
+
+message TicketUsage {
+  string ticket_id = 1;
+  string used_by = 2;
+  string action = 3;
+  google.protobuf.Timestamp used_at = 4;
+}
+
+message CreateTicketRequest {
+  string purpose = 1;
+  int32 max_uses = 2;
+  int32 valid_hours = 3;
+  repeated string snapshot_ids = 4;
+  repeated string paths = 5;
+}
+
+message CreateTicketResponse {
+  Ticket ticket = 1;
+}
+
+message RegisterTicketRequest {
+  Ticket ticket = 1;
+}
+
+message RegisterTicketResponse {
+  string status = 1;
+  string message = 2;
+}
+
+message ListTicketsRequest {
+  string status_filter = 1;  // "active", "expired", "exhausted"
+}
+
+message ListTicketsResponse {
+  repeated Ticket tickets = 1;
+}
+
+message GetTicketRequest {
+  string id = 1;
+}
+
+message GetTicketResponse {
+  Ticket ticket = 1;
+}
+
+message GetTicketUsageRequest {
+  string id = 1;
+}
+
+message GetTicketUsageResponse {
+  repeated TicketUsage usages = 1;
+}
+
+// ============================================================================
+// Witness Types
+// ============================================================================
+
+message WitnessCheckpoint {
+  string id = 1;
+  string witness_id = 2;
+  string witness_name = 3;
+  string checkpoint_hash = 4;
+  int64 snapshot_count = 5;
+  int64 total_bytes = 6;
+  string signature = 7;
+  google.protobuf.Timestamp created_at = 8;
+}
+
+message SubmitWitnessCheckpointRequest {
+  WitnessCheckpoint checkpoint = 1;
+}
+
+message SubmitWitnessCheckpointResponse {
+  string status = 1;
+  string message = 2;
+}
+
+message CreateWitnessCheckpointRequest {}
+
+message CreateWitnessCheckpointResponse {
+  WitnessCheckpoint checkpoint = 1;
+}
+
+message GetWitnessCheckpointRequest {
+  string id = 1;
+}
+
+message GetWitnessCheckpointResponse {
+  WitnessCheckpoint checkpoint = 1;
+}

@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package airgapper.v1;
+
+// VaultService handles vault initialization
+service VaultService {
+  // InitVault initializes a new vault as the owner
+  rpc InitVault(InitVaultRequest) returns (InitVaultResponse);
+}
+
+message InitVaultRequest {
+  string name = 1;
+  string repo_url = 2;
+  int32 threshold = 3;            // m in m-of-n
+  int32 total_keys = 4;           // n in m-of-n
+  repeated string backup_paths = 5;
+  bool require_approval = 6;      // For 1/1 solo mode
+}
+
+message InitVaultResponse {
+  string name = 1;
+  string key_id = 2;
+  string public_key = 3;
+  int32 threshold = 4;
+  int32 total_keys = 5;
+}

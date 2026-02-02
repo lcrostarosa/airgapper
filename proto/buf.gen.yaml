@@ -1,0 +1,17 @@
+version: v2
+managed:
+  enabled: true
+  override:
+    - file_option: go_package_prefix
+      value: github.com/lcrostarosa/airgapper/backend/gen
+plugins:
+  # Go message generation
+  - local: protoc-gen-go
+    out: ../backend/gen
+    opt:
+      - paths=source_relative
+  # Connect-Go service generation
+  - local: protoc-gen-connect-go
+    out: ../backend/gen
+    opt:
+      - paths=source_relative
