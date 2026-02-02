@@ -76,10 +76,10 @@ func joinSSS(cmd *cobra.Command, name, repoURL string) error {
 		return fmt.Errorf("invalid share (must be hex): %w", err)
 	}
 
-	PrintHeader("Airgapper Join (Backup Host) - SSS Mode")
-	PrintInfo("Name:  %s", name)
-	PrintInfo("Repo:  %s", repoURL)
-	PrintInfo("Share: %d bytes, index %d", len(share), shareIndex)
+	printHeader("Airgapper Join (Backup Host) - SSS Mode")
+	printInfo("Name:  %s", name)
+	printInfo("Repo:  %s", repoURL)
+	printInfo("Share: %d bytes, index %d", len(share), shareIndex)
 	fmt.Println()
 
 	newCfg := &config.Config{
@@ -94,21 +94,21 @@ func joinSSS(cmd *cobra.Command, name, repoURL string) error {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
-	PrintSuccess("Joined as backup host!")
+	printSuccess("Joined as backup host!")
 	fmt.Println()
-	PrintInfo("Commands available to you:")
-	PrintInfo("  airgapper pending  - List pending restore requests")
-	PrintInfo("  airgapper approve  - Approve a restore request")
-	PrintInfo("  airgapper deny     - Deny a restore request")
-	PrintInfo("  airgapper serve    - Run HTTP API for remote management")
+	printInfo("Commands available to you:")
+	printInfo("  airgapper pending  - List pending restore requests")
+	printInfo("  airgapper approve  - Approve a restore request")
+	printInfo("  airgapper deny     - Deny a restore request")
+	printInfo("  airgapper serve    - Run HTTP API for remote management")
 
 	return nil
 }
 
 func joinConsensus(name, repoURL string) error {
-	PrintHeader("Airgapper Join (Key Holder) - Consensus Mode")
-	PrintInfo("Name: %s", name)
-	PrintInfo("Repo: %s", repoURL)
+	printHeader("Airgapper Join (Key Holder) - Consensus Mode")
+	printInfo("Name: %s", name)
+	printInfo("Repo: %s", repoURL)
 	fmt.Println()
 
 	pubKey, privKey, err := crypto.GenerateKeyPair()
@@ -117,8 +117,8 @@ func joinConsensus(name, repoURL string) error {
 	}
 	keyID := crypto.KeyID(pubKey)
 
-	PrintInfo("1. Generated Ed25519 key pair")
-	PrintInfo("   Your Key ID: %s", keyID)
+	printInfo("1. Generated Ed25519 key pair")
+	printInfo("   Your Key ID: %s", keyID)
 
 	newCfg := &config.Config{
 		Name:       name,
@@ -132,18 +132,18 @@ func joinConsensus(name, repoURL string) error {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
-	PrintInfo("2. Configuration saved to ~/.airgapper/")
+	printInfo("2. Configuration saved to ~/.airgapper/")
 	fmt.Println()
-	PrintDivider()
-	PrintWarning("IMPORTANT: Register with the vault owner")
-	PrintDivider()
+	printDivider()
+	printWarning("IMPORTANT: Register with the vault owner")
+	printDivider()
 	fmt.Println()
-	PrintInfo("Share your public key with the vault owner so they can register you:")
+	printInfo("Share your public key with the vault owner so they can register you:")
 	fmt.Println()
-	PrintInfo("  Public Key: %s", crypto.EncodePublicKey(pubKey))
-	PrintInfo("  Key ID:     %s", keyID)
-	PrintDivider()
+	printInfo("  Public Key: %s", crypto.EncodePublicKey(pubKey))
+	printInfo("  Key ID:     %s", keyID)
+	printDivider()
 
-	PrintSuccess("Joined as key holder!")
+	printSuccess("Joined as key holder!")
 	return nil
 }

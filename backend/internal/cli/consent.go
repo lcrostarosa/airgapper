@@ -47,11 +47,11 @@ func runRequest(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	PrintHeader("Restore Request Created")
-	PrintInfo("Request ID: %s", req.ID)
-	PrintInfo("Snapshot:   %s", req.SnapshotID)
-	PrintInfo("Reason:     %s", req.Reason)
-	PrintInfo("Expires:    %s", req.ExpiresAt.Format("2006-01-02 15:04:05"))
+	printHeader("Restore Request Created")
+	printInfo("Request ID: %s", req.ID)
+	printInfo("Snapshot:   %s", req.SnapshotID)
+	printInfo("Reason:     %s", req.Reason)
+	printInfo("Expires:    %s", req.ExpiresAt.Format("2006-01-02 15:04:05"))
 
 	// Notify peer if address provided
 	if peerAddr == "" && cfg.Peer != nil && cfg.Peer.Address != "" {
@@ -63,17 +63,17 @@ func runRequest(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Println()
-	PrintInfo("Waiting for peer approval...")
-	PrintInfo("Share request ID with your peer: %s", req.ID)
+	printInfo("Waiting for peer approval...")
+	printInfo("Share request ID with your peer: %s", req.ID)
 	fmt.Println()
-	PrintInfo("Once approved, run:")
-	PrintInfo("  airgapper restore --request %s --target /restore/path", req.ID)
+	printInfo("Once approved, run:")
+	printInfo("  airgapper restore --request %s --target /restore/path", req.ID)
 
 	return nil
 }
 
 func notifyPeer(peerAddr string, req *consent.RestoreRequest) {
-	PrintInfo("\nNotifying peer at %s...", peerAddr)
+	printInfo("\nNotifying peer at %s...", peerAddr)
 
 	reqBody := map[string]interface{}{
 		"id":          req.ID,
@@ -85,16 +85,16 @@ func notifyPeer(peerAddr string, req *consent.RestoreRequest) {
 
 	resp, err := http.Post(peerAddr+"/api/requests", "application/json", bytes.NewReader(jsonBody))
 	if err != nil {
-		PrintWarning("Could not notify peer: %v", err)
-		PrintInfo("   Share the request ID manually.")
+		printWarning("Could not notify peer: %v", err)
+		printInfo("   Share the request ID manually.")
 		return
 	}
 	resp.Body.Close()
 
 	if resp.StatusCode == http.StatusCreated || resp.StatusCode == http.StatusOK {
-		PrintSuccess("Peer notified!")
+		printSuccess("Peer notified!")
 	} else {
-		PrintWarning("Peer returned status %d", resp.StatusCode)
+		printWarning("Peer returned status %d", resp.StatusCode)
 	}
 }
 
@@ -123,11 +123,11 @@ func runPending(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(requests) == 0 {
-		PrintInfo("No pending restore requests.")
+		printInfo("No pending restore requests.")
 		return nil
 	}
 
-	PrintHeader("Pending Restore Requests")
+	printHeader("Pending Restore Requests")
 	for _, req := range requests {
 		fmt.Printf("\nID: %s\n", req.ID)
 		fmt.Printf("  From:     %s\n", req.Requester)
@@ -137,8 +137,8 @@ func runPending(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Println()
-	PrintInfo("To approve: airgapper approve <request-id>")
-	PrintInfo("To deny:    airgapper deny <request-id>")
+	printInfo("To approve: airgapper approve <request-id>")
+	printInfo("To deny:    airgapper deny <request-id>")
 
 	return nil
 }
@@ -178,16 +178,16 @@ func approveSSS(mgr *consent.Manager, requestID string) error {
 		return fmt.Errorf("failed to load share: %w", err)
 	}
 
-	PrintInfo("Approving request %s...", requestID)
-	PrintInfo("Releasing key share (index %d)...", shareIndex)
+	printInfo("Approving request %s...", requestID)
+	printInfo("Releasing key share (index %d)...", shareIndex)
 
 	if err := mgr.Approve(requestID, cfg.Name, share); err != nil {
 		return err
 	}
 
-	PrintSuccess("Request approved!")
-	PrintInfo("Your key share has been released.")
-	PrintInfo("The requester can now restore their data.")
+	printSuccess("Request approved!")
+	printInfo("Your key share has been released.")
+	printInfo("The requester can now restore their data.")
 
 	return nil
 }
@@ -203,8 +203,8 @@ func approveConsensus(mgr *consent.Manager, requestID string) error {
 	}
 
 	keyID := crypto.KeyID(cfg.PublicKey)
-	PrintInfo("Signing request %s...", requestID)
-	PrintInfo("Your Key ID: %s", keyID)
+	printInfo("Signing request %s...", requestID)
+	printInfo("Your Key ID: %s", keyID)
 
 	signature, err := crypto.SignRestoreRequest(
 		cfg.PrivateKey,
@@ -226,14 +226,14 @@ func approveConsensus(mgr *consent.Manager, requestID string) error {
 
 	current, required, _ := mgr.GetApprovalProgress(requestID)
 
-	PrintSuccess("Request signed!")
-	PrintInfo("Approvals: %d of %d required", current, required)
+	printSuccess("Request signed!")
+	printInfo("Approvals: %d of %d required", current, required)
 
 	if current >= required {
-		PrintSuccess("Request is now fully approved!")
-		PrintInfo("The requester can now restore their data.")
+		printSuccess("Request is now fully approved!")
+		printInfo("The requester can now restore their data.")
 	} else {
-		PrintInfo("Waiting for %d more approval(s)...", required-current)
+		printInfo("Waiting for %d more approval(s)...", required-current)
 	}
 
 	return nil
@@ -265,6 +265,6 @@ func runDeny(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	PrintInfo("Request denied.")
+	printInfo("Request denied.")
 	return nil
 }

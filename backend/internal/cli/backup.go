@@ -32,10 +32,9 @@ func runBackup(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no password found - this config may be corrupted")
 	}
 
-	PrintHeader("Creating Backup")
-	PrintInfo("Repository: %s", cfg.RepoURL)
-	PrintInfo("Paths: %s", strings.Join(args, ", "))
-	fmt.Println()
+	fmt.Print("\n=== Creating Backup ===\n\n")
+	fmt.Printf("Repository: %s\n", cfg.RepoURL)
+	fmt.Printf("Paths: %s\n\n", strings.Join(args, ", "))
 
 	if !restic.IsInstalled() {
 		return fmt.Errorf("restic is not installed")
@@ -49,7 +48,7 @@ func runBackup(cmd *cobra.Command, args []string) error {
 	// Record activity for dead man's switch
 	cfg.RecordActivity()
 
-	PrintSuccess("Backup complete!")
+	fmt.Println("Backup complete!")
 	return nil
 }
 
@@ -70,11 +69,10 @@ func runSnapshots(cmd *cobra.Command, args []string) error {
 	}
 
 	if !cfg.IsOwner() {
-		PrintHeader("Snapshots")
-		PrintInfo("Repository: %s", cfg.RepoURL)
-		fmt.Println()
-		PrintWarning("As a backup host, you cannot list snapshots.")
-		PrintInfo("   The data is encrypted and you don't have the key.")
+		fmt.Print("\n=== Snapshots ===\n\n")
+		fmt.Printf("Repository: %s\n\n", cfg.RepoURL)
+		fmt.Println("Warning: As a backup host, you cannot list snapshots.")
+		fmt.Println("   The data is encrypted and you don't have the key.")
 		return nil
 	}
 
@@ -82,9 +80,8 @@ func runSnapshots(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no password found")
 	}
 
-	PrintHeader("Snapshots")
-	PrintInfo("Repository: %s", cfg.RepoURL)
-	fmt.Println()
+	fmt.Print("\n=== Snapshots ===\n\n")
+	fmt.Printf("Repository: %s\n\n", cfg.RepoURL)
 
 	client := restic.NewClient(cfg.RepoURL, cfg.Password)
 	output, err := client.Snapshots()

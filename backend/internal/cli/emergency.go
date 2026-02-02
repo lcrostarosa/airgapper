@@ -35,9 +35,9 @@ func runHeartbeat(cmd *cobra.Command, args []string) error {
 
 	dms := cfg.Emergency.GetDeadManSwitch()
 	if !dms.IsEnabled() {
-		PrintInfo("Dead man's switch is not enabled.")
-		PrintInfo("\nTo enable, reinitialize with:")
-		PrintInfo("  airgapper init --dead-man-switch 180d ...")
+		printInfo("Dead man's switch is not enabled.")
+		printInfo("\nTo enable, reinitialize with:")
+		printInfo("  airgapper init --dead-man-switch 180d ...")
 		return nil
 	}
 
@@ -45,10 +45,10 @@ func runHeartbeat(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to record activity: %w", err)
 	}
 
-	PrintSuccess("Heartbeat recorded!")
-	PrintInfo("Last activity: %s", dms.LastActivity.Format("2006-01-02 15:04:05"))
-	PrintInfo("Inactivity threshold: %d days", dms.InactivityDays)
-	PrintInfo("Days until trigger: %d", dms.DaysUntilTrigger())
+	printSuccess("Heartbeat recorded!")
+	printInfo("Last activity: %s", dms.LastActivity.Format("2006-01-02 15:04:05"))
+	printInfo("Inactivity threshold: %d days", dms.InactivityDays)
+	printInfo("Days until trigger: %d", dms.DaysUntilTrigger())
 
 	return nil
 }
@@ -108,15 +108,15 @@ func runExportShare(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("share index %d not found", shareIndex)
 	}
 
-	PrintHeader(fmt.Sprintf("Exporting Share %d", shareIndex))
+	printHeader(fmt.Sprintf("Exporting Share %d", shareIndex))
 	fmt.Println()
-	PrintInfo("Share: %s", hex.EncodeToString(targetShare.Data))
-	PrintInfo("Index: %d", targetShare.Index)
-	PrintInfo("Repo:  %s", cfg.RepoURL)
+	printInfo("Share: %s", hex.EncodeToString(targetShare.Data))
+	printInfo("Index: %d", targetShare.Index)
+	printInfo("Repo:  %s", cfg.RepoURL)
 	fmt.Println()
 	fmt.Println(strings.Repeat("=", 70))
-	PrintWarning("This share is part of a %d-of-%d scheme.", k, n)
-	PrintInfo("   Any %d shares can decrypt your backups - store securely!", k)
+	printWarning("This share is part of a %d-of-%d scheme.", k, n)
+	printInfo("   Any %d shares can decrypt your backups - store securely!", k)
 
 	return nil
 }
@@ -188,8 +188,8 @@ func runOverrideSetup(cmd *cobra.Command, args []string) error {
 	}
 
 	if cfg.Emergency.GetOverride().HasKey() {
-		PrintWarning("Override key already configured!")
-		PrintInfo("   To reset, remove ~/.airgapper/config.json and reinitialize.")
+		printWarning("Override key already configured!")
+		printInfo("   To reset, remove ~/.airgapper/config.json and reinitialize.")
 		return nil
 	}
 
@@ -207,19 +207,19 @@ func runOverrideSetup(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
-	PrintHeader("Override Key Generated")
+	printHeader("Override Key Generated")
 	fmt.Println()
-	PrintInfo("Override Key: %s", key)
+	printInfo("Override Key: %s", key)
 	fmt.Println()
 	fmt.Println(strings.Repeat("=", 70))
 	fmt.Println()
-	PrintWarning("IMPORTANT: Store this key securely!")
-	PrintInfo("   - This key is shown ONCE and cannot be recovered")
-	PrintInfo("   - Store in a safe deposit box, with a lawyer, etc.")
-	PrintInfo("   - Anyone with this key can bypass security controls")
+	printWarning("IMPORTANT: Store this key securely!")
+	printInfo("   - This key is shown ONCE and cannot be recovered")
+	printInfo("   - Store in a safe deposit box, with a lawyer, etc.")
+	printInfo("   - Anyone with this key can bypass security controls")
 	fmt.Println()
-	PrintInfo("Use with:")
-	PrintInfo("  airgapper restore --override-key %s --reason \"...\"", key)
+	printInfo("Use with:")
+	printInfo("  airgapper restore --override-key %s --reason \"...\"", key)
 
 	return nil
 }
@@ -242,7 +242,7 @@ func runOverrideAllow(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
-	PrintSuccess("Override type '%s' is now allowed", overrideType)
+	printSuccess("Override type '%s' is now allowed", overrideType)
 	return nil
 }
 
@@ -255,7 +255,7 @@ func runOverrideDeny(cmd *cobra.Command, args []string) error {
 
 	override := cfg.Emergency.GetOverride()
 	if override == nil {
-		PrintInfo("No override configuration found")
+		printInfo("No override configuration found")
 		return nil
 	}
 
@@ -265,7 +265,7 @@ func runOverrideDeny(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
-	PrintSuccess("Override type '%s' is now denied", overrideType)
+	printSuccess("Override type '%s' is now denied", overrideType)
 	return nil
 }
 
@@ -276,25 +276,25 @@ func runOverrideList(cmd *cobra.Command, args []string) error {
 
 	o := cfg.Emergency.GetOverride()
 	if !o.IsEnabled() {
-		PrintInfo("Override system is not configured.")
+		printInfo("Override system is not configured.")
 		fmt.Println()
-		PrintInfo("To enable, run:")
-		PrintInfo("  airgapper override setup")
+		printInfo("To enable, run:")
+		printInfo("  airgapper override setup")
 		return nil
 	}
 
-	PrintHeader("Override Configuration")
-	PrintInfo("Enabled: %v", o.Enabled)
-	PrintInfo("Key configured: %v", o.HasKey())
-	PrintInfo("Require reason: %v", o.RequireReason)
-	PrintInfo("Notify on override: %v", o.NotifyOnUse)
+	printHeader("Override Configuration")
+	printInfo("Enabled: %v", o.Enabled)
+	printInfo("Key configured: %v", o.HasKey())
+	printInfo("Require reason: %v", o.RequireReason)
+	printInfo("Notify on override: %v", o.NotifyOnUse)
 	fmt.Println()
-	PrintInfo("Allowed override types:")
+	printInfo("Allowed override types:")
 	if len(o.AllowedTypes) == 0 {
-		PrintInfo("  (none)")
+		printInfo("  (none)")
 	} else {
 		for _, ot := range o.AllowedTypes {
-			PrintInfo("  ✅ %s", ot)
+			printInfo("  ✅ %s", ot)
 		}
 	}
 	return nil
@@ -309,13 +309,13 @@ func runOverrideAudit(cmd *cobra.Command, args []string) error {
 	data, err := os.ReadFile(auditPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			PrintInfo("No override audit log found (no overrides have been used).")
+			printInfo("No override audit log found (no overrides have been used).")
 			return nil
 		}
 		return err
 	}
 
-	PrintHeader("Override Audit Log")
+	printHeader("Override Audit Log")
 	fmt.Println(string(data))
 	return nil
 }
@@ -453,10 +453,10 @@ func runNotifyAdd(cmd *cobra.Command, args []string) error {
 	}
 
 	if dryRun {
-		PrintInfo("Dry-run: Would add notification provider:")
-		PrintInfo("  ID: %s", providerID)
-		PrintInfo("  Type: %s", providerType)
-		PrintInfo("  Priority: %s", priority)
+		printInfo("Dry-run: Would add notification provider:")
+		printInfo("  ID: %s", providerID)
+		printInfo("  Type: %s", providerType)
+		printInfo("  Priority: %s", priority)
 		return nil
 	}
 
@@ -466,7 +466,7 @@ func runNotifyAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
-	PrintSuccess("Added notification provider: %s (%s)", providerID, providerType)
+	printSuccess("Added notification provider: %s (%s)", providerID, providerType)
 	return nil
 }
 
@@ -488,7 +488,7 @@ func runNotifyRemove(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
-	PrintSuccess("Removed notification provider: %s", providerID)
+	printSuccess("Removed notification provider: %s", providerID)
 	return nil
 }
 
@@ -499,21 +499,21 @@ func runNotifyList(cmd *cobra.Command, args []string) error {
 
 	notify := cfg.Emergency.GetNotify()
 	if !notify.HasProviders() {
-		PrintInfo("No notification providers configured.")
+		printInfo("No notification providers configured.")
 		fmt.Println()
-		PrintInfo("Add a provider with:")
-		PrintInfo("  airgapper notify add pushover --api-token xxx --user-key yyy")
-		PrintInfo("  airgapper notify add ntfy --server https://ntfy.sh --topic mybackups")
+		printInfo("Add a provider with:")
+		printInfo("  airgapper notify add pushover --api-token xxx --user-key yyy")
+		printInfo("  airgapper notify add ntfy --server https://ntfy.sh --topic mybackups")
 		return nil
 	}
 
-	PrintHeader("Notification Providers")
+	printHeader("Notification Providers")
 	for id, provider := range notify.Providers {
 		status := "✅"
 		if !provider.Enabled {
 			status = "❌"
 		}
-		PrintInfo("%s %s (%s) - Priority: %s", status, id, provider.Type, provider.Priority)
+		printInfo("%s %s (%s) - Priority: %s", status, id, provider.Type, provider.Priority)
 	}
 	return nil
 }
@@ -528,11 +528,11 @@ func runNotifyTest(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no notification providers configured")
 	}
 
-	PrintInfo("Sending test notification...")
-	PrintInfo("Configured providers: %d", notify.ProviderCount())
+	printInfo("Sending test notification...")
+	printInfo("Configured providers: %d", notify.ProviderCount())
 	fmt.Println()
-	PrintWarning("Note: Full notification delivery requires the notification service.")
-	PrintInfo("   Test messages will be sent when 'airgapper serve' is running.")
+	printWarning("Note: Full notification delivery requires the notification service.")
+	printInfo("   Test messages will be sent when 'airgapper serve' is running.")
 	return nil
 }
 
@@ -556,19 +556,19 @@ func runNotifyEvents(cmd *cobra.Command, args []string) error {
 	// If no flags, show current config
 	if !all && !none && !f.Changed("backup-started") && !f.Changed("backup-completed") {
 		events := e.Notify.Events
-		PrintHeader("Notification Events")
-		PrintInfo("Backup Started:      %v", events.BackupStarted)
-		PrintInfo("Backup Completed:    %v", events.BackupCompleted)
-		PrintInfo("Backup Failed:       %v", events.BackupFailed)
-		PrintInfo("Restore Requested:   %v", events.RestoreRequested)
-		PrintInfo("Restore Approved:    %v", events.RestoreApproved)
-		PrintInfo("Restore Denied:      %v", events.RestoreDenied)
-		PrintInfo("Deletion Requested:  %v", events.DeletionRequested)
-		PrintInfo("Deletion Approved:   %v", events.DeletionApproved)
-		PrintInfo("Consensus Received:  %v", events.ConsensusReceived)
-		PrintInfo("Emergency Triggered: %v", events.EmergencyTriggered)
-		PrintInfo("Dead Man Warning:    %v", events.DeadManWarning)
-		PrintInfo("Heartbeat Missed:    %v", events.HeartbeatMissed)
+		printHeader("Notification Events")
+		printInfo("Backup Started:      %v", events.BackupStarted)
+		printInfo("Backup Completed:    %v", events.BackupCompleted)
+		printInfo("Backup Failed:       %v", events.BackupFailed)
+		printInfo("Restore Requested:   %v", events.RestoreRequested)
+		printInfo("Restore Approved:    %v", events.RestoreApproved)
+		printInfo("Restore Denied:      %v", events.RestoreDenied)
+		printInfo("Deletion Requested:  %v", events.DeletionRequested)
+		printInfo("Deletion Approved:   %v", events.DeletionApproved)
+		printInfo("Consensus Received:  %v", events.ConsensusReceived)
+		printInfo("Emergency Triggered: %v", events.EmergencyTriggered)
+		printInfo("Dead Man Warning:    %v", events.DeadManWarning)
+		printInfo("Heartbeat Missed:    %v", events.HeartbeatMissed)
 		return nil
 	}
 
@@ -605,6 +605,6 @@ func runNotifyEvents(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
-	PrintSuccess("Event notification settings updated")
+	printSuccess("Event notification settings updated")
 	return nil
 }

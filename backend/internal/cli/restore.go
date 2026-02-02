@@ -67,24 +67,22 @@ func runRestore(cmd *cobra.Command, args []string) error {
 		{Index: peerIndex, Data: req.ShareData},
 	}
 
-	PrintInfo("Reconstructing password from key shares...")
+	fmt.Println("Reconstructing password from key shares...")
 	password, err := sss.Combine(shares)
 	if err != nil {
 		return fmt.Errorf("failed to reconstruct password: %w", err)
 	}
 
-	PrintSuccess("Password reconstructed successfully")
-	fmt.Println()
-	PrintInfo("Starting restore...")
-	PrintInfo("Snapshot: %s", req.SnapshotID)
-	PrintInfo("Target:   %s", target)
-	fmt.Println()
+	fmt.Println("Password reconstructed successfully")
+	fmt.Println("Starting restore...")
+	fmt.Printf("Snapshot: %s\n", req.SnapshotID)
+	fmt.Printf("Target:   %s\n\n", target)
 
 	client := restic.NewClient(cfg.RepoURL, string(password))
 	if err := client.Restore(req.SnapshotID, target); err != nil {
 		return fmt.Errorf("restore failed: %w", err)
 	}
 
-	PrintSuccess("Restore complete! Files restored to: %s", target)
+	fmt.Printf("Restore complete! Files restored to: %s\n", target)
 	return nil
 }

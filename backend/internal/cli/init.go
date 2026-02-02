@@ -101,11 +101,11 @@ func initSSS(cmd *cobra.Command, name, repoURL string) error {
 		return fmt.Errorf("recovery threshold (%d) cannot exceed total shares (%d)", recoveryThreshold, recoveryShares)
 	}
 
-	PrintHeader("Airgapper Initialization (Data Owner) - SSS Mode")
-	PrintInfo("Name: %s", name)
-	PrintInfo("Repo: %s", repoURL)
+	printHeader("Airgapper Initialization (Data Owner) - SSS Mode")
+	printInfo("Name: %s", name)
+	printInfo("Repo: %s", repoURL)
 	if recoveryShares > 2 {
-		PrintInfo("Recovery: %d-of-%d shares", recoveryThreshold, recoveryShares)
+		printInfo("Recovery: %d-of-%d shares", recoveryThreshold, recoveryShares)
 	}
 	fmt.Println()
 
@@ -115,22 +115,22 @@ func initSSS(cmd *cobra.Command, name, repoURL string) error {
 		return fmt.Errorf("failed to generate password: %w", err)
 	}
 	password := hex.EncodeToString(passwordBytes)
-	PrintInfo("1. Generated secure repository password")
+	printInfo("1. Generated secure repository password")
 
 	// Split using SSS
 	shares, err := sss.Split([]byte(password), recoveryThreshold, recoveryShares)
 	if err != nil {
 		return fmt.Errorf("failed to split password: %w", err)
 	}
-	PrintInfo("2. Split password into %d shares (%d-of-%d required)", recoveryShares, recoveryThreshold, recoveryShares)
+	printInfo("2. Split password into %d shares (%d-of-%d required)", recoveryShares, recoveryThreshold, recoveryShares)
 
 	// Initialize restic repo
-	PrintInfo("3. Initializing restic repository...")
+	printInfo("3. Initializing restic repository...")
 	client := restic.NewClient(repoURL, password)
 	if err := client.Init(); err != nil {
 		return fmt.Errorf("failed to init repo: %w", err)
 	}
-	PrintInfo("4. Repository initialized successfully")
+	printInfo("4. Repository initialized successfully")
 
 	// Build config
 	newCfg := &config.Config{
@@ -162,7 +162,7 @@ func initSSS(cmd *cobra.Command, name, repoURL string) error {
 	if err := newCfg.Save(); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
-	PrintInfo("5. Configuration saved to ~/.airgapper/")
+	printInfo("5. Configuration saved to ~/.airgapper/")
 
 	// Output shares
 	printShareInfo(shares, repoURL, recoveryThreshold, recoveryShares, custodians)
@@ -171,7 +171,7 @@ func initSSS(cmd *cobra.Command, name, repoURL string) error {
 		printEmergencyFeatures(newCfg.Emergency)
 	}
 
-	PrintSuccess("Initialization complete!")
+	printSuccess("Initialization complete!")
 	printInitNextSteps(recoveryShares > 2)
 
 	return nil
@@ -189,10 +189,10 @@ func initConsensus(cmd *cobra.Command, name, repoURL string) error {
 		holders = threshold
 	}
 
-	PrintHeader("Airgapper Initialization (Data Owner) - Consensus Mode")
-	PrintInfo("Name:      %s", name)
-	PrintInfo("Repo:      %s", repoURL)
-	PrintInfo("Consensus: %d-of-%d", threshold, holders)
+	printHeader("Airgapper Initialization (Data Owner) - Consensus Mode")
+	printInfo("Name:      %s", name)
+	printInfo("Repo:      %s", repoURL)
+	printInfo("Consensus: %d-of-%d", threshold, holders)
 	fmt.Println()
 
 	// Generate password
@@ -201,7 +201,7 @@ func initConsensus(cmd *cobra.Command, name, repoURL string) error {
 		return fmt.Errorf("failed to generate password: %w", err)
 	}
 	password := hex.EncodeToString(passwordBytes)
-	PrintInfo("1. Generated secure repository password")
+	printInfo("1. Generated secure repository password")
 
 	// Generate Ed25519 key pair
 	pubKey, privKey, err := crypto.GenerateKeyPair()
@@ -209,16 +209,16 @@ func initConsensus(cmd *cobra.Command, name, repoURL string) error {
 		return fmt.Errorf("failed to generate key pair: %w", err)
 	}
 	keyID := crypto.KeyID(pubKey)
-	PrintInfo("2. Generated Ed25519 key pair")
-	PrintInfo("   Your Key ID: %s", keyID)
+	printInfo("2. Generated Ed25519 key pair")
+	printInfo("   Your Key ID: %s", keyID)
 
 	// Initialize restic repo
-	PrintInfo("3. Initializing restic repository...")
+	printInfo("3. Initializing restic repository...")
 	client := restic.NewClient(repoURL, password)
 	if err := client.Init(); err != nil {
 		return fmt.Errorf("failed to init repo: %w", err)
 	}
-	PrintInfo("4. Repository initialized successfully")
+	printInfo("4. Repository initialized successfully")
 
 	// Build config
 	ownerHolder := config.KeyHolder{
@@ -247,44 +247,44 @@ func initConsensus(cmd *cobra.Command, name, repoURL string) error {
 	if err := newCfg.Save(); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
-	PrintInfo("5. Configuration saved to ~/.airgapper/")
+	printInfo("5. Configuration saved to ~/.airgapper/")
 
 	if holders > 1 {
-		PrintDivider()
-		PrintWarning("IMPORTANT: Invite other key holders to join")
-		PrintInfo("You need %d more key holder(s) to reach %d-of-%d consensus.", holders-1, threshold, holders)
+		printDivider()
+		printWarning("IMPORTANT: Invite other key holders to join")
+		printInfo("You need %d more key holder(s) to reach %d-of-%d consensus.", holders-1, threshold, holders)
 		fmt.Println()
-		PrintInfo("They should run:")
-		PrintInfo("  airgapper join --name <their-name> --repo '%s' --consensus", repoURL)
-		PrintDivider()
+		printInfo("They should run:")
+		printInfo("  airgapper join --name <their-name> --repo '%s' --consensus", repoURL)
+		printDivider()
 	}
 
-	PrintSuccess("Initialization complete!")
+	printSuccess("Initialization complete!")
 	return nil
 }
 
 func printShareInfo(shares []sss.Share, repoURL string, k, n int, custodians []string) {
 	fmt.Println()
 	fmt.Println(strings.Repeat("=", 70))
-	PrintWarning("IMPORTANT: Share this with your backup host (Bob):")
-	PrintDivider()
+	printWarning("IMPORTANT: Share this with your backup host (Bob):")
+	printDivider()
 
 	peerShare := hex.EncodeToString(shares[1].Data)
-	PrintInfo("  Share:   %s", peerShare)
-	PrintInfo("  Index:   %d", shares[1].Index)
-	PrintInfo("  Repo:    %s", repoURL)
+	printInfo("  Share:   %s", peerShare)
+	printInfo("  Index:   %d", shares[1].Index)
+	printInfo("  Repo:    %s", repoURL)
 	fmt.Println()
-	PrintInfo("They should run:")
-	PrintInfo("  airgapper join --name <their-name> --repo '%s' \\", repoURL)
-	PrintInfo("    --share %s --index %d", peerShare, shares[1].Index)
+	printInfo("They should run:")
+	printInfo("  airgapper join --name <their-name> --repo '%s' \\", repoURL)
+	printInfo("    --share %s --index %d", peerShare, shares[1].Index)
 
 	if n > 2 {
 		fmt.Println()
-		PrintDivider()
-		PrintInfo("RECOVERY CUSTODIAN SHARES:")
-		PrintDivider()
-		PrintInfo("These shares can be used to recover if you lose access to share 1.")
-		PrintInfo("Any %d of %d shares can reconstruct the password.", k, n)
+		printDivider()
+		printInfo("RECOVERY CUSTODIAN SHARES:")
+		printDivider()
+		printInfo("These shares can be used to recover if you lose access to share 1.")
+		printInfo("Any %d of %d shares can reconstruct the password.", k, n)
 		fmt.Println()
 
 		for i := 2; i < n; i++ {
@@ -293,11 +293,11 @@ func printShareInfo(shares []sss.Share, repoURL string, k, n int, custodians []s
 				custName = custodians[i-2]
 			}
 			custShare := hex.EncodeToString(shares[i].Data)
-			PrintInfo("Share %d (%s):", shares[i].Index, custName)
-			PrintInfo("  %s", custShare)
+			printInfo("Share %d (%s):", shares[i].Index, custName)
+			printInfo("  %s", custShare)
 			fmt.Println()
 		}
-		PrintWarning("Store these shares securely! They can decrypt your backups!")
+		printWarning("Store these shares securely! They can decrypt your backups!")
 	}
 
 	fmt.Println(strings.Repeat("=", 70))
@@ -305,27 +305,27 @@ func printShareInfo(shares []sss.Share, repoURL string, k, n int, custodians []s
 
 func printEmergencyFeatures(e *emergency.Config) {
 	fmt.Println()
-	PrintInfo("Emergency Features Enabled:")
+	printInfo("Emergency Features Enabled:")
 	if e.Recovery != nil && e.Recovery.Enabled {
-		PrintInfo("  • Recovery shares: %d-of-%d", e.Recovery.Threshold, e.Recovery.TotalShares)
+		printInfo("  • Recovery shares: %d-of-%d", e.Recovery.Threshold, e.Recovery.TotalShares)
 	}
 	if e.DeadManSwitch != nil && e.DeadManSwitch.Enabled {
-		PrintInfo("  • Dead man's switch: %d days", e.DeadManSwitch.InactivityDays)
+		printInfo("  • Dead man's switch: %d days", e.DeadManSwitch.InactivityDays)
 	}
 	if e.Override != nil && e.Override.Enabled {
-		PrintInfo("  • Override key: run 'airgapper override setup' to generate")
+		printInfo("  • Override key: run 'airgapper override setup' to generate")
 	}
 }
 
 func printInitNextSteps(hasRecovery bool) {
 	fmt.Println()
-	PrintInfo("Next steps:")
-	PrintInfo("  1. Give the host share above to your backup host")
+	printInfo("Next steps:")
+	printInfo("  1. Give the host share above to your backup host")
 	if hasRecovery {
-		PrintInfo("  2. Securely distribute custodian shares to trusted parties")
+		printInfo("  2. Securely distribute custodian shares to trusted parties")
 	}
-	PrintInfo("  3. Configure backup schedule: airgapper schedule --set daily ~/Documents")
-	PrintInfo("  4. Run: airgapper backup <paths>  (or start server for scheduled backups)")
+	printInfo("  3. Configure backup schedule: airgapper schedule --set daily ~/Documents")
+	printInfo("  4. Run: airgapper backup <paths>  (or start server for scheduled backups)")
 }
 
 func parseDays(s string) int {

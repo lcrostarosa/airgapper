@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/lcrostarosa/airgapper/backend/internal/emergency"
 )
 
 // Role defines the role of this node
@@ -19,38 +21,45 @@ const (
 
 // KeyHolder represents a participant in the consensus scheme
 type KeyHolder struct {
-	ID        string    `json:"id"`                   // Hash of public key (first 16 hex chars of SHA256)
-	Name      string    `json:"name"`                 // Human-readable name
-	PublicKey []byte    `json:"public_key"`           // Ed25519 public key
-	Address   string    `json:"address,omitempty"`    // Network address for communication
-	JoinedAt  time.Time `json:"joined_at"`            // When this key holder joined
-	IsOwner   bool      `json:"is_owner,omitempty"`   // True if this is the vault owner
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	PublicKey []byte    `json:"public_key"`
+	Address   string    `json:"address,omitempty"`
+	JoinedAt  time.Time `json:"joined_at"`
+	IsOwner   bool      `json:"is_owner,omitempty"`
 }
 
 // ConsensusConfig defines the m-of-n approval requirements
 type ConsensusConfig struct {
-	Threshold       int         `json:"threshold"`                  // m (required approvals)
-	TotalKeys       int         `json:"total_keys"`                 // n (total participants)
-	KeyHolders      []KeyHolder `json:"key_holders"`                // Registered key holders
-	RequireApproval bool        `json:"require_approval,omitempty"` // For 1/1: require explicit approval?
+	Threshold       int         `json:"threshold"`
+	TotalKeys       int         `json:"total_keys"`
+	KeyHolders      []KeyHolder `json:"key_holders"`
+	RequireApproval bool        `json:"require_approval,omitempty"`
+}
+
+// PeerInfo represents information about the other party
+type PeerInfo struct {
+	Name      string `json:"name"`
+	PublicKey []byte `json:"public_key,omitempty"`
+	Address   string `json:"address,omitempty"`
 }
 
 // Config represents the Airgapper configuration
 type Config struct {
 	// Identity
-	Name       string `json:"name"`                  // Human-readable name for this node
-	Role       Role   `json:"role"`                  // owner or host
-	PublicKey  []byte `json:"public_key,omitempty"`  // Ed25519 public key
-	PrivateKey []byte `json:"private_key,omitempty"` // Ed25519 private key (encrypted at rest)
+	Name       string `json:"name"`
+	Role       Role   `json:"role"`
+	PublicKey  []byte `json:"public_key,omitempty"`
+	PrivateKey []byte `json:"private_key,omitempty"`
 
 	// Repository
-	RepoURL  string `json:"repo_url"`           // Restic repository URL (e.g., rest:http://peer:8000/)
-	RepoID   string `json:"repo_id,omitempty"`  // Unique repo identifier
-	Password string `json:"password,omitempty"` // Full repo password (only for owner, used for backup)
+	RepoURL  string `json:"repo_url"`
+	RepoID   string `json:"repo_id,omitempty"`
+	Password string `json:"password,omitempty"`
 
 	// Key shares (for restore consensus - legacy SSS mode)
-	LocalShare []byte `json:"local_share,omitempty"` // Our share of the repo password
-	ShareIndex byte   `json:"share_index,omitempty"` // Our share index (1 or 2)
+	LocalShare []byte `json:"local_share,omitempty"`
+	ShareIndex byte   `json:"share_index,omitempty"`
 
 	// Consensus configuration (new m-of-n mode)
 	Consensus *ConsensusConfig `json:"consensus,omitempty"`
@@ -59,31 +68,27 @@ type Config struct {
 	Peer *PeerInfo `json:"peer,omitempty"`
 
 	// API settings
-	ListenAddr string `json:"listen_addr,omitempty"` // Address for HTTP API (e.g., :8080)
+	ListenAddr string `json:"listen_addr,omitempty"`
 
 	// Backup settings (owner only)
-	BackupPaths    []string `json:"backup_paths,omitempty"`    // Paths to back up
-	BackupSchedule string   `json:"backup_schedule,omitempty"` // Schedule expression (cron or simple)
-	BackupExclude  []string `json:"backup_exclude,omitempty"`  // Patterns to exclude
+	BackupPaths    []string `json:"backup_paths,omitempty"`
+	BackupSchedule string   `json:"backup_schedule,omitempty"`
+	BackupExclude  []string `json:"backup_exclude,omitempty"`
 
 	// Filesystem browsing security
-	AllowedBrowseRoots []string `json:"allowed_browse_roots,omitempty"` // Allowed root directories for browsing
+	AllowedBrowseRoots []string `json:"allowed_browse_roots,omitempty"`
 
 	// Storage server settings (host only)
-	StoragePath       string `json:"storage_path,omitempty"`       // Path to store backup data
-	StorageQuotaBytes int64  `json:"storage_quota_bytes,omitempty"` // Storage quota in bytes (0 = unlimited)
-	StorageAppendOnly bool   `json:"storage_append_only,omitempty"` // Enable append-only mode
-	StoragePort       int    `json:"storage_port,omitempty"`        // Port for storage server (default: uses main API port)
+	StoragePath       string `json:"storage_path,omitempty"`
+	StorageQuotaBytes int64  `json:"storage_quota_bytes,omitempty"`
+	StorageAppendOnly bool   `json:"storage_append_only,omitempty"`
+	StoragePort       int    `json:"storage_port,omitempty"`
 
-	// Paths
-	ConfigDir string `json:"-"` // Not serialized, set at runtime
-}
+	// Emergency recovery settings (uses emergency package types)
+	Emergency *emergency.Config `json:"emergency,omitempty"`
 
-// PeerInfo represents information about the other party
-type PeerInfo struct {
-	Name      string `json:"name"`
-	PublicKey []byte `json:"public_key,omitempty"`
-	Address   string `json:"address,omitempty"` // Network address for communication
+	// Paths (not serialized)
+	ConfigDir string `json:"-"`
 }
 
 // DefaultConfigDir returns the default config directory
@@ -132,7 +137,6 @@ func (c *Config) Save() error {
 		c.ConfigDir = DefaultConfigDir()
 	}
 
-	// Ensure directory exists
 	if err := os.MkdirAll(c.ConfigDir, 0700); err != nil {
 		return err
 	}
@@ -146,19 +150,23 @@ func (c *Config) Save() error {
 	return os.WriteFile(configPath, data, 0600)
 }
 
-// SharePath returns the path to store/load key shares
+// --- Role methods ---
+
+func (c *Config) IsOwner() bool { return c.Role == RoleOwner }
+func (c *Config) IsHost() bool  { return c.Role == RoleHost }
+
+// --- Share methods ---
+
 func (c *Config) SharePath() string {
 	return filepath.Join(c.ConfigDir, "share.key")
 }
 
-// SaveShare saves the local key share to disk
 func (c *Config) SaveShare(share []byte, index byte) error {
 	c.LocalShare = share
 	c.ShareIndex = index
 	return c.Save()
 }
 
-// LoadShare loads the local key share
 func (c *Config) LoadShare() ([]byte, byte, error) {
 	if c.LocalShare == nil {
 		return nil, 0, errors.New("no local share found")
@@ -166,17 +174,8 @@ func (c *Config) LoadShare() ([]byte, byte, error) {
 	return c.LocalShare, c.ShareIndex, nil
 }
 
-// IsOwner returns true if this node is the data owner
-func (c *Config) IsOwner() bool {
-	return c.Role == RoleOwner
-}
+// --- Schedule methods ---
 
-// IsHost returns true if this node is the backup host
-func (c *Config) IsHost() bool {
-	return c.Role == RoleHost
-}
-
-// SetSchedule sets the backup schedule
 func (c *Config) SetSchedule(schedule string, paths []string) error {
 	c.BackupSchedule = schedule
 	if len(paths) > 0 {
@@ -185,23 +184,18 @@ func (c *Config) SetSchedule(schedule string, paths []string) error {
 	return c.Save()
 }
 
-// UsesSSSMode returns true if using legacy Shamir's Secret Sharing mode
-func (c *Config) UsesSSSMode() bool {
-	return c.Consensus == nil && c.LocalShare != nil
-}
+// --- Mode detection ---
 
-// UsesConsensusMode returns true if using new m-of-n consensus mode
-func (c *Config) UsesConsensusMode() bool {
-	return c.Consensus != nil
-}
+func (c *Config) UsesSSSMode() bool      { return c.Consensus == nil && c.LocalShare != nil }
+func (c *Config) UsesConsensusMode() bool { return c.Consensus != nil }
 
-// AddKeyHolder adds a new key holder to the consensus configuration
+// --- Consensus methods ---
+
 func (c *Config) AddKeyHolder(holder KeyHolder) error {
 	if c.Consensus == nil {
 		return errors.New("consensus not configured")
 	}
 
-	// Check if already exists
 	for _, kh := range c.Consensus.KeyHolders {
 		if kh.ID == holder.ID {
 			return errors.New("key holder already registered")
@@ -212,7 +206,6 @@ func (c *Config) AddKeyHolder(holder KeyHolder) error {
 	return c.Save()
 }
 
-// GetKeyHolder finds a key holder by ID
 func (c *Config) GetKeyHolder(id string) *KeyHolder {
 	if c.Consensus == nil {
 		return nil
@@ -225,8 +218,6 @@ func (c *Config) GetKeyHolder(id string) *KeyHolder {
 	return nil
 }
 
-// CanRestoreDirectly returns true if the owner can restore without approval
-// (solo mode with RequireApproval=false)
 func (c *Config) CanRestoreDirectly() bool {
 	if c.Consensus == nil {
 		return false
@@ -236,11 +227,60 @@ func (c *Config) CanRestoreDirectly() bool {
 		!c.Consensus.RequireApproval
 }
 
-// RequiredApprovals returns the number of approvals needed for a restore
 func (c *Config) RequiredApprovals() int {
 	if c.Consensus == nil {
-		// Legacy SSS mode always requires 2 shares
-		return 2
+		return 2 // Legacy SSS mode
 	}
 	return c.Consensus.Threshold
+}
+
+// --- Emergency recovery methods (nil-safe delegation) ---
+
+// RecordActivity updates the dead man's switch last activity
+func (c *Config) RecordActivity() error {
+	c.Emergency.GetDeadManSwitch().RecordActivity()
+	return c.Save()
+}
+
+// GetRecoveryThreshold returns shares needed for recovery
+func (c *Config) GetRecoveryThreshold() int {
+	return c.Emergency.GetRecovery().GetThreshold()
+}
+
+// GetRecoveryTotalShares returns total recovery shares
+func (c *Config) GetRecoveryTotalShares() int {
+	return c.Emergency.GetRecovery().GetTotalShares()
+}
+
+// IsOverrideAllowed checks if an override type is permitted
+func (c *Config) IsOverrideAllowed(t emergency.OverrideType) bool {
+	return c.Emergency.GetOverride().IsTypeAllowed(t)
+}
+
+// GetDaysSinceActivity returns days since last activity
+func (c *Config) GetDaysSinceActivity() int {
+	return c.Emergency.GetDeadManSwitch().DaysSinceActivity()
+}
+
+// IsDeadManSwitchTriggered checks if switch should trigger
+func (c *Config) IsDeadManSwitchTriggered() bool {
+	return c.Emergency.GetDeadManSwitch().IsTriggered()
+}
+
+// IsDeadManSwitchWarning checks if in warning period
+func (c *Config) IsDeadManSwitchWarning() bool {
+	return c.Emergency.GetDeadManSwitch().IsWarning()
+}
+
+// HasEmergencyConfig returns true if any emergency features are configured
+func (c *Config) HasEmergencyConfig() bool {
+	return c.Emergency != nil
+}
+
+// EnsureEmergency ensures Emergency config exists
+func (c *Config) EnsureEmergency() *emergency.Config {
+	if c.Emergency == nil {
+		c.Emergency = emergency.NewConfig()
+	}
+	return c.Emergency
 }

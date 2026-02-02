@@ -66,6 +66,39 @@ type Policy struct {
 	// Signatures (set after both parties sign)
 	OwnerSignature string `json:"owner_signature,omitempty"` // hex-encoded
 	HostSignature  string `json:"host_signature,omitempty"`  // hex-encoded
+
+	// Emergency policy (optional, cryptographically signed with main policy)
+	Emergency *EmergencyPolicy `json:"emergency,omitempty"`
+}
+
+// EmergencyPolicy defines pre-authorized actions for unresponsive scenarios
+type EmergencyPolicy struct {
+	// Restore request handling
+	RestoreAutoApproveAfterDays int `json:"restore_auto_approve_days,omitempty"` // 0 = never
+	RestoreAutoDenyAfterDays    int `json:"restore_auto_deny_days,omitempty"`    // 0 = never
+
+	// Deletion request handling
+	DeletionAutoApproveAfterDays int `json:"deletion_auto_approve_days,omitempty"` // 0 = never
+	DeletionAgeThresholdDays     int `json:"deletion_age_days,omitempty"`          // Data older than this = auto-deletable
+
+	// Notification escalation
+	EscalationContacts  []string `json:"escalation_contacts,omitempty"`
+	EscalationAfterDays int      `json:"escalation_after_days,omitempty"`
+
+	// Dead man's switch integration
+	DeadManSwitchDays       int `json:"dead_man_switch_days,omitempty"`         // Days of inactivity before trigger
+	DeadManSwitchWarningDays int `json:"dead_man_switch_warning_days,omitempty"` // Days before trigger to warn
+}
+
+// EmergencyCheckResult contains the result of checking emergency policy
+type EmergencyCheckResult struct {
+	ShouldAutoApprove    bool
+	ShouldAutoDeny       bool
+	ShouldEscalate       bool
+	Reason               string
+	DaysUntilAutoApprove int
+	DaysUntilAutoDeny    int
+	DaysUntilEscalation  int
 }
 
 // PolicySignData is the canonical data structure for signing
@@ -312,4 +345,135 @@ func FromJSON(data []byte) (*Policy, error) {
 		return nil, fmt.Errorf("failed to parse policy: %w", err)
 	}
 	return &p, nil
+}
+
+// ============================================================================
+// Emergency Policy Methods
+// ============================================================================
+
+// CheckRestoreEmergencyPolicy evaluates a restore request against emergency policy
+func (p *Policy) CheckRestoreEmergencyPolicy(requestCreatedAt time.Time) *EmergencyCheckResult {
+	result := &EmergencyCheckResult{}
+
+	if p.Emergency == nil {
+		return result
+	}
+
+	daysPending := int(time.Since(requestCreatedAt).Hours() / 24)
+
+	// Check auto-approve
+	if p.Emergency.RestoreAutoApproveAfterDays > 0 {
+		result.DaysUntilAutoApprove = p.Emergency.RestoreAutoApproveAfterDays - daysPending
+		if daysPending >= p.Emergency.RestoreAutoApproveAfterDays {
+			result.ShouldAutoApprove = true
+			result.Reason = fmt.Sprintf("request pending for %d days (auto-approve threshold: %d)",
+				daysPending, p.Emergency.RestoreAutoApproveAfterDays)
+		}
+	}
+
+	// Check auto-deny (takes precedence if both would trigger)
+	if p.Emergency.RestoreAutoDenyAfterDays > 0 {
+		result.DaysUntilAutoDeny = p.Emergency.RestoreAutoDenyAfterDays - daysPending
+		if daysPending >= p.Emergency.RestoreAutoDenyAfterDays {
+			result.ShouldAutoDeny = true
+			result.ShouldAutoApprove = false // Deny takes precedence
+			result.Reason = fmt.Sprintf("request pending for %d days (auto-deny threshold: %d)",
+				daysPending, p.Emergency.RestoreAutoDenyAfterDays)
+		}
+	}
+
+	// Check escalation
+	if p.Emergency.EscalationAfterDays > 0 && len(p.Emergency.EscalationContacts) > 0 {
+		result.DaysUntilEscalation = p.Emergency.EscalationAfterDays - daysPending
+		if daysPending >= p.Emergency.EscalationAfterDays {
+			result.ShouldEscalate = true
+		}
+	}
+
+	return result
+}
+
+// CheckDeletionEmergencyPolicy evaluates a deletion request against emergency policy
+func (p *Policy) CheckDeletionEmergencyPolicy(requestCreatedAt time.Time, dataCreatedAt time.Time) *EmergencyCheckResult {
+	result := &EmergencyCheckResult{}
+
+	if p.Emergency == nil {
+		return result
+	}
+
+	daysPending := int(time.Since(requestCreatedAt).Hours() / 24)
+	dataAgeDays := int(time.Since(dataCreatedAt).Hours() / 24)
+
+	// Check if data is old enough for auto-deletion
+	if p.Emergency.DeletionAgeThresholdDays > 0 && dataAgeDays >= p.Emergency.DeletionAgeThresholdDays {
+		result.ShouldAutoApprove = true
+		result.Reason = fmt.Sprintf("data age (%d days) exceeds threshold (%d days)",
+			dataAgeDays, p.Emergency.DeletionAgeThresholdDays)
+		return result
+	}
+
+	// Check request timeout auto-approve
+	if p.Emergency.DeletionAutoApproveAfterDays > 0 {
+		result.DaysUntilAutoApprove = p.Emergency.DeletionAutoApproveAfterDays - daysPending
+		if daysPending >= p.Emergency.DeletionAutoApproveAfterDays {
+			result.ShouldAutoApprove = true
+			result.Reason = fmt.Sprintf("deletion request pending for %d days (auto-approve threshold: %d)",
+				daysPending, p.Emergency.DeletionAutoApproveAfterDays)
+		}
+	}
+
+	// Check escalation
+	if p.Emergency.EscalationAfterDays > 0 && len(p.Emergency.EscalationContacts) > 0 {
+		result.DaysUntilEscalation = p.Emergency.EscalationAfterDays - daysPending
+		if daysPending >= p.Emergency.EscalationAfterDays {
+			result.ShouldEscalate = true
+		}
+	}
+
+	return result
+}
+
+// CanDeleteEmergency checks if deletion should be auto-approved based on emergency policy
+func (p *Policy) CanDeleteEmergency(dataCreatedAt time.Time, ownerLastActivity time.Time) (bool, string) {
+	if p.Emergency == nil {
+		return false, "no emergency policy configured"
+	}
+
+	// Check if data is old enough
+	if p.Emergency.DeletionAgeThresholdDays > 0 {
+		dataAgeDays := int(time.Since(dataCreatedAt).Hours() / 24)
+		if dataAgeDays >= p.Emergency.DeletionAgeThresholdDays {
+			return true, fmt.Sprintf("data age (%d days) exceeds threshold (%d days)",
+				dataAgeDays, p.Emergency.DeletionAgeThresholdDays)
+		}
+	}
+
+	// Check if dead man's switch triggered
+	if p.Emergency.DeadManSwitchDays > 0 && !ownerLastActivity.IsZero() {
+		inactiveDays := int(time.Since(ownerLastActivity).Hours() / 24)
+		if inactiveDays >= p.Emergency.DeadManSwitchDays {
+			return true, fmt.Sprintf("owner inactive for %d days (dead man's switch threshold: %d)",
+				inactiveDays, p.Emergency.DeadManSwitchDays)
+		}
+	}
+
+	return false, "emergency deletion criteria not met"
+}
+
+// SetEmergencyPolicy sets the emergency policy
+func (p *Policy) SetEmergencyPolicy(emergency *EmergencyPolicy) {
+	p.Emergency = emergency
+}
+
+// HasEmergencyPolicy returns true if an emergency policy is configured
+func (p *Policy) HasEmergencyPolicy() bool {
+	return p.Emergency != nil
+}
+
+// GetEscalationContacts returns the escalation contact list
+func (p *Policy) GetEscalationContacts() []string {
+	if p.Emergency == nil {
+		return nil
+	}
+	return p.Emergency.EscalationContacts
 }

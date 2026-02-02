@@ -62,7 +62,7 @@ func clearSchedule() error {
 	if err := cfg.Save(); err != nil {
 		return err
 	}
-	PrintSuccess("Schedule cleared.")
+	printSuccess("Schedule cleared.")
 	return nil
 }
 
@@ -81,42 +81,42 @@ func setBackupSchedule(scheduleExpr string, paths []string) error {
 		return err
 	}
 
-	PrintSuccess("Schedule configured!")
-	PrintInfo("Schedule: %s", cfg.BackupSchedule)
+	printSuccess("Schedule configured!")
+	printInfo("Schedule: %s", cfg.BackupSchedule)
 	if len(cfg.BackupPaths) > 0 {
-		PrintInfo("Paths:    %s", strings.Join(cfg.BackupPaths, ", "))
+		printInfo("Paths:    %s", strings.Join(cfg.BackupPaths, ", "))
 	}
 
 	nextRun := sched.NextRun(time.Now())
-	PrintInfo("Next run: %s (in %s)", nextRun.Format("2006-01-02 15:04:05"), scheduler.FormatDuration(time.Until(nextRun)))
+	printInfo("Next run: %s (in %s)", nextRun.Format("2006-01-02 15:04:05"), scheduler.FormatDuration(time.Until(nextRun)))
 	fmt.Println()
-	PrintInfo("To start scheduled backups, run:")
-	PrintInfo("  airgapper serve")
+	printInfo("To start scheduled backups, run:")
+	printInfo("  airgapper serve")
 	return nil
 }
 
 func showSchedule() error {
-	PrintHeader("Backup Schedule")
+	printHeader("Backup Schedule")
 
 	if cfg.BackupSchedule == "" {
-		PrintInfo("No schedule configured.")
+		printInfo("No schedule configured.")
 		fmt.Println()
-		PrintInfo("Set a schedule with:")
-		PrintInfo("  airgapper schedule --set daily ~/Documents")
+		printInfo("Set a schedule with:")
+		printInfo("  airgapper schedule --set daily ~/Documents")
 		return nil
 	}
 
-	PrintInfo("Schedule: %s", cfg.BackupSchedule)
+	printInfo("Schedule: %s", cfg.BackupSchedule)
 	if len(cfg.BackupPaths) > 0 {
-		PrintInfo("Paths:    %s", strings.Join(cfg.BackupPaths, ", "))
+		printInfo("Paths:    %s", strings.Join(cfg.BackupPaths, ", "))
 	} else {
-		PrintInfo("Paths:    (none configured)")
+		printInfo("Paths:    (none configured)")
 	}
 
 	sched, err := scheduler.ParseSchedule(cfg.BackupSchedule)
 	if err == nil {
 		nextRun := sched.NextRun(time.Now())
-		PrintInfo("Next run: %s (in %s)", nextRun.Format("2006-01-02 15:04:05"), scheduler.FormatDuration(time.Until(nextRun)))
+		printInfo("Next run: %s (in %s)", nextRun.Format("2006-01-02 15:04:05"), scheduler.FormatDuration(time.Until(nextRun)))
 	}
 
 	return nil

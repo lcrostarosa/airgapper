@@ -81,19 +81,19 @@ func resolveAddr(cmd *cobra.Command) string {
 }
 
 func printServerInfo(serveCfg *config.Config, addr string) {
-	PrintHeader("Airgapper Server")
-	PrintInfo("Name: %s", serveCfg.Name)
-	PrintInfo("Role: %s", serveCfg.Role)
-	PrintInfo("API:  http://localhost%s", addr)
+	printHeader("Airgapper Server")
+	printInfo("Name: %s", serveCfg.Name)
+	printInfo("Role: %s", serveCfg.Role)
+	printInfo("API:  http://localhost%s", addr)
 	fmt.Println()
 
-	PrintInfo("Endpoints:")
-	PrintInfo("  GET  /health               - Health check")
-	PrintInfo("  GET  /api/status           - System status")
-	PrintInfo("  GET  /api/requests         - List pending requests")
-	PrintInfo("  POST /api/requests         - Create restore request")
-	PrintInfo("  POST /api/requests/{id}/approve - Approve request")
-	PrintInfo("  POST /api/requests/{id}/deny    - Deny request")
+	printInfo("Endpoints:")
+	printInfo("  GET  /health               - Health check")
+	printInfo("  GET  /api/status           - System status")
+	printInfo("  GET  /api/requests         - List pending requests")
+	printInfo("  POST /api/requests         - Create restore request")
+	printInfo("  POST /api/requests/{id}/approve - Approve request")
+	printInfo("  POST /api/requests/{id}/deny    - Deny request")
 	fmt.Println()
 }
 
@@ -115,8 +115,8 @@ func setupScheduler(cmd *cobra.Command, serveCfg *config.Config, server *api.Ser
 
 	if scheduleExpr == "" || len(backupPaths) == 0 {
 		if scheduleExpr == "" {
-			PrintInfo("No backup schedule configured.")
-			PrintInfo("   Configure with: airgapper schedule --set daily ~/Documents")
+			printInfo("No backup schedule configured.")
+			printInfo("   Configure with: airgapper schedule --set daily ~/Documents")
 			fmt.Println()
 		}
 		return nil
@@ -124,7 +124,7 @@ func setupScheduler(cmd *cobra.Command, serveCfg *config.Config, server *api.Ser
 
 	parsedSched, err := scheduler.ParseSchedule(scheduleExpr)
 	if err != nil {
-		PrintWarning("Invalid schedule: %v", err)
+		printWarning("Invalid schedule: %v", err)
 		return nil
 	}
 
@@ -140,11 +140,11 @@ func setupScheduler(cmd *cobra.Command, serveCfg *config.Config, server *api.Ser
 	sched := scheduler.NewScheduler(parsedSched, backupFunc)
 	server.SetScheduler(sched)
 
-	PrintInfo("Scheduled Backups:")
-	PrintInfo("  Schedule: %s", scheduleExpr)
-	PrintInfo("  Paths:    %s", strings.Join(backupPaths, ", "))
+	printInfo("Scheduled Backups:")
+	printInfo("  Schedule: %s", scheduleExpr)
+	printInfo("  Paths:    %s", strings.Join(backupPaths, ", "))
 	nextRun := parsedSched.NextRun(time.Now())
-	PrintInfo("  Next:     %s", nextRun.Format("2006-01-02 15:04:05"))
+	printInfo("  Next:     %s", nextRun.Format("2006-01-02 15:04:05"))
 	fmt.Println()
 
 	sched.Start()
@@ -152,7 +152,7 @@ func setupScheduler(cmd *cobra.Command, serveCfg *config.Config, server *api.Ser
 }
 
 func runServer(server *api.Server, sched *scheduler.Scheduler) error {
-	PrintInfo("Press Ctrl+C to stop")
+	printInfo("Press Ctrl+C to stop")
 	fmt.Println()
 
 	stop := make(chan os.Signal, 1)
@@ -179,6 +179,6 @@ func runServer(server *api.Server, sched *scheduler.Scheduler) error {
 		return fmt.Errorf("shutdown error: %w", err)
 	}
 
-	PrintInfo("Server stopped.")
+	printInfo("Server stopped.")
 	return nil
 }

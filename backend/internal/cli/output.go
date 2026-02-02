@@ -2,37 +2,31 @@ package cli
 
 import (
 	"fmt"
-	"os"
 	"strings"
 )
 
-// PrintError prints an error message to stderr
-func PrintError(format string, args ...interface{}) {
-	fmt.Fprintf(os.Stderr, "Error: "+format+"\n", args...)
+func printHeader(format string, args ...interface{}) {
+	fmt.Println()
+	fmt.Printf("=== "+format+" ===\n", args...)
+	fmt.Println()
 }
 
-// PrintSuccess prints a success message
-func PrintSuccess(format string, args ...interface{}) {
-	fmt.Printf("✅ "+format+"\n", args...)
-}
-
-// PrintWarning prints a warning message
-func PrintWarning(format string, args ...interface{}) {
-	fmt.Printf("⚠️  "+format+"\n", args...)
-}
-
-// PrintInfo prints an info message
-func PrintInfo(format string, args ...interface{}) {
+func printInfo(format string, args ...interface{}) {
 	fmt.Printf(format+"\n", args...)
 }
 
-// PrintHeader prints a section header
-func PrintHeader(title string) {
-	fmt.Println(title)
-	fmt.Println(strings.Repeat("=", len(title)))
+func printSuccess(format string, args ...interface{}) {
+	fmt.Printf(format+"\n", args...)
 }
 
-// PrintDivider prints a visual divider
-func PrintDivider() {
-	fmt.Println(strings.Repeat("-", 70))
+func printWarning(format string, args ...interface{}) {
+	fmt.Printf("Warning: "+format+"\n", args...)
+}
+
+func printError(format string, args ...interface{}) {
+	fmt.Printf("Error: "+format+"\n", args...)
+}
+
+func printDivider() {
+	fmt.Println(strings.Repeat("-", 50))
 }

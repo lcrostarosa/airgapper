@@ -14,16 +14,28 @@ type Share struct {
 }
 
 // Split splits a secret into n shares, requiring k shares to reconstruct
-// For Airgapper MVP, we use k=2, n=2 (both parties required)
+// Supports flexible k-of-n schemes for recovery scenarios (e.g., 2-of-4)
 func Split(secret []byte, k, n int) ([]Share, error) {
-	if k < 2 {
-		return nil, errors.New("threshold k must be at least 2")
+	if k < 1 {
+		return nil, errors.New("threshold k must be at least 1")
 	}
-	if n < k {
+	if k > n {
 		return nil, errors.New("n must be >= k")
 	}
 	if n > 255 {
 		return nil, errors.New("n must be <= 255")
+	}
+	if k == 1 {
+		// Special case: 1-of-n means each share is the full secret
+		shares := make([]Share, n)
+		for i := range shares {
+			shares[i] = Share{
+				Index: byte(i + 1),
+				Data:  make([]byte, len(secret)),
+			}
+			copy(shares[i].Data, secret)
+		}
+		return shares, nil
 	}
 
 	shares := make([]Share, n)
@@ -60,8 +72,15 @@ func Split(secret []byte, k, n int) ([]Share, error) {
 
 // Combine reconstructs the secret from k or more shares
 func Combine(shares []Share) ([]byte, error) {
-	if len(shares) < 2 {
-		return nil, errors.New("need at least 2 shares to reconstruct")
+	if len(shares) < 1 {
+		return nil, errors.New("need at least 1 share to reconstruct")
+	}
+
+	// Single share case - return copy of share data
+	if len(shares) == 1 {
+		result := make([]byte, len(shares[0].Data))
+		copy(result, shares[0].Data)
+		return result, nil
 	}
 
 	// All shares must have the same length

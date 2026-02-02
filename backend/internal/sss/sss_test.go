@@ -142,9 +142,9 @@ func TestSplitErrors(t *testing.T) {
 		k, n   int
 	}{
 		{
-			name:   "k too small",
+			name:   "k is zero",
 			secret: []byte("test"),
-			k:      1,
+			k:      0,
 			n:      2,
 		},
 		{
@@ -171,12 +171,38 @@ func TestSplitErrors(t *testing.T) {
 	}
 }
 
+func TestSplit1ofN(t *testing.T) {
+	// Test that 1-of-n schemes work (for single-party mode)
+	secret := []byte("test secret for 1-of-n")
+
+	shares, err := Split(secret, 1, 3)
+	if err != nil {
+		t.Fatalf("Split 1-of-3 failed: %v", err)
+	}
+
+	if len(shares) != 3 {
+		t.Errorf("Expected 3 shares, got %d", len(shares))
+	}
+
+	// Any single share should recover the secret
+	for i, share := range shares {
+		result, err := Combine([]Share{share})
+		if err != nil {
+			t.Errorf("Combine single share %d failed: %v", i, err)
+			continue
+		}
+		if !bytes.Equal(result, secret) {
+			t.Errorf("Single share %d gave wrong result", i)
+		}
+	}
+}
+
 func TestCombineErrors(t *testing.T) {
-	t.Run("too few shares", func(t *testing.T) {
-		shares := []Share{{Index: 1, Data: []byte("test")}}
+	t.Run("no shares", func(t *testing.T) {
+		shares := []Share{}
 		_, err := Combine(shares)
 		if err == nil {
-			t.Error("Expected error for single share")
+			t.Error("Expected error for no shares")
 		}
 	})
 
