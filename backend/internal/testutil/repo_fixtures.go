@@ -37,25 +37,25 @@ type DataFileInfo struct {
 
 // RepositoryFixtureBuilder constructs repository fixtures
 type RepositoryFixtureBuilder struct {
-	basePath     string
-	repoName     string
+	basePath      string
+	repoName      string
 	dataFileCount int
-	configData   []byte
-	keyData      []byte
-	snapshots    map[string][]byte
-	t            *testing.T
+	configData    []byte
+	keyData       []byte
+	snapshots     map[string][]byte
+	t             *testing.T
 }
 
 // NewRepositoryFixture starts building a repository fixture
 func NewRepositoryFixture(t *testing.T) *RepositoryFixtureBuilder {
 	return &RepositoryFixtureBuilder{
-		basePath:     t.TempDir(),
-		repoName:     "testrepo",
+		basePath:      t.TempDir(),
+		repoName:      "testrepo",
 		dataFileCount: 5,
-		configData:   []byte("test config data"),
-		keyData:      []byte("key data"),
-		snapshots:    map[string][]byte{"snap123": []byte("snapshot data")},
-		t:            t,
+		configData:    []byte("test config data"),
+		keyData:       []byte("key data"),
+		snapshots:     map[string][]byte{"snap123": []byte("snapshot data")},
+		t:             t,
 	}
 }
 

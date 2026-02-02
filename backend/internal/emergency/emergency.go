@@ -11,19 +11,19 @@ import (
 
 // Config holds all emergency recovery configuration
 type Config struct {
-	Recovery     *RecoveryConfig     `json:"recovery,omitempty"`
+	Recovery      *RecoveryConfig      `json:"recovery,omitempty"`
 	DeadManSwitch *DeadManSwitchConfig `json:"dead_man_switch,omitempty"`
-	Override     *OverrideConfig     `json:"override,omitempty"`
-	Notify       *NotifyConfig       `json:"notify,omitempty"`
+	Override      *OverrideConfig      `json:"override,omitempty"`
+	Notify        *NotifyConfig        `json:"notify,omitempty"`
 }
 
 // RecoveryConfig defines m-of-n recovery share settings
 type RecoveryConfig struct {
-	Enabled      bool            `json:"enabled"`
-	Threshold    int             `json:"threshold"`     // k shares needed
-	TotalShares  int             `json:"total_shares"`  // n total shares
-	Custodians   []Custodian     `json:"custodians,omitempty"`
-	ShareIndexes []byte          `json:"share_indexes,omitempty"`
+	Enabled      bool        `json:"enabled"`
+	Threshold    int         `json:"threshold"`    // k shares needed
+	TotalShares  int         `json:"total_shares"` // n total shares
+	Custodians   []Custodian `json:"custodians,omitempty"`
+	ShareIndexes []byte      `json:"share_indexes,omitempty"`
 }
 
 // Custodian represents a third-party holding a recovery share
@@ -52,12 +52,12 @@ type TriggerAction struct {
 
 // OverrideConfig defines emergency bypass settings
 type OverrideConfig struct {
-	Enabled          bool           `json:"enabled"`
-	KeyHash          string         `json:"key_hash,omitempty"`
-	AllowedTypes     []OverrideType `json:"allowed_types"`
-	RequireReason    bool           `json:"require_reason"`
-	CooldownMinutes  int            `json:"cooldown_minutes,omitempty"`
-	NotifyOnUse      bool           `json:"notify_on_use"`
+	Enabled         bool           `json:"enabled"`
+	KeyHash         string         `json:"key_hash,omitempty"`
+	AllowedTypes    []OverrideType `json:"allowed_types"`
+	RequireReason   bool           `json:"require_reason"`
+	CooldownMinutes int            `json:"cooldown_minutes,omitempty"`
+	NotifyOnUse     bool           `json:"notify_on_use"`
 }
 
 // OverrideType defines types of emergency overrides

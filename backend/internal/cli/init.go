@@ -134,7 +134,7 @@ func initSSS(cmd *cobra.Command, name, repoURL string) error {
 	// Initialize restic repo
 	logging.Info("Initializing restic repository...")
 	client := restic.NewClient(repoURL, password)
-	if err := client.Init(); err != nil {
+	if err := client.Init(cmd.Context()); err != nil {
 		return fmt.Errorf("failed to init repo: %w", err)
 	}
 	logging.Info("Repository initialized successfully")
@@ -217,7 +217,7 @@ func initConsensus(cmd *cobra.Command, name, repoURL string, threshold, holders 
 	// Initialize restic repo
 	logging.Info("Initializing restic repository...")
 	client := restic.NewClient(repoURL, password)
-	if err := client.Init(); err != nil {
+	if err := client.Init(cmd.Context()); err != nil {
 		return fmt.Errorf("failed to init repo: %w", err)
 	}
 	logging.Info("Repository initialized successfully")

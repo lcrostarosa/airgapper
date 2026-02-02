@@ -139,12 +139,12 @@ func (s *StatusService) GetSystemStatus(pendingCount int) *SystemStatus {
 
 // GetScheduleInfo returns current schedule configuration
 type ScheduleInfo struct {
-	Schedule string
-	Paths    []string
-	Enabled  bool
-	LastRun  string
+	Schedule  string
+	Paths     []string
+	Enabled   bool
+	LastRun   string
 	LastError string
-	NextRun  string
+	NextRun   string
 }
 
 func (s *StatusService) GetScheduleInfo() *ScheduleInfo {

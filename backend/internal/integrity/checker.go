@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/lcrostarosa/airgapper/backend/internal/crypto"
+	"github.com/lcrostarosa/airgapper/backend/internal/logging"
 )
 
 // CheckResult represents the result of an integrity check
@@ -33,15 +34,15 @@ type CheckResult struct {
 // VerificationRecord is a signed record of expected backup state
 // Created by the owner after each successful backup
 type VerificationRecord struct {
-	ID          string    `json:"id"`
-	SnapshotID  string    `json:"snapshotId"`
-	CreatedAt   time.Time `json:"createdAt"`
-	OwnerKeyID  string    `json:"ownerKeyId"`
+	ID         string    `json:"id"`
+	SnapshotID string    `json:"snapshotId"`
+	CreatedAt  time.Time `json:"createdAt"`
+	OwnerKeyID string    `json:"ownerKeyId"`
 
 	// Hashes of critical files
-	ConfigHash    string   `json:"configHash"`
-	KeyHashes     []string `json:"keyHashes"`     // Sorted hashes of key files
-	SnapshotHash  string   `json:"snapshotHash"`  // Hash of the snapshot file
+	ConfigHash   string   `json:"configHash"`
+	KeyHashes    []string `json:"keyHashes"`    // Sorted hashes of key files
+	SnapshotHash string   `json:"snapshotHash"` // Hash of the snapshot file
 
 	// Merkle root of all data blob names (not contents - too expensive)
 	DataMerkleRoot string `json:"dataMerkleRoot"`
@@ -88,11 +89,15 @@ func NewChecker(basePath string) (*Checker, error) {
 func (c *Checker) loadRecords() {
 	data, err := os.ReadFile(c.recordsPath)
 	if err != nil {
+		if !os.IsNotExist(err) {
+			logging.Debug("failed to read verification records", logging.Err(err))
+		}
 		return
 	}
 
 	var records []*VerificationRecord
 	if err := json.Unmarshal(data, &records); err != nil {
+		logging.Debug("failed to parse verification records", logging.Err(err))
 		return
 	}
 
@@ -531,12 +536,12 @@ func (sc *ScheduledChecker) SetCorruptionCallback(cb func(result *CheckResult)) 
 // Start begins scheduled checking
 func (sc *ScheduledChecker) Start() {
 	sc.mu.Lock()
+	defer sc.mu.Unlock()
+
 	if sc.running {
-		sc.mu.Unlock()
 		return
 	}
 	sc.running = true
-	sc.mu.Unlock()
 
 	go sc.run()
 }

@@ -41,9 +41,21 @@ func (i *integrityServer) RunFullCheck(
 	ctx context.Context,
 	req *connect.Request[airgapperv1.RunFullCheckRequest],
 ) (*connect.Response[airgapperv1.RunFullCheckResponse], error) {
-	// TODO: Implement full integrity check
+	if i.server.integrityChecker == nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errIntegrityNotConfigured)
+	}
+
+	// Default to "default" repo if not specified
+	repoName := "default"
+
+	result, err := i.server.integrityChecker.CheckDataIntegrity(repoName)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+
 	return connect.NewResponse(&airgapperv1.RunFullCheckResponse{
-		Status: "not_implemented",
+		Status: "completed",
+		Result: toProtoIntegrityCheckResult(result),
 	}), nil
 }
 

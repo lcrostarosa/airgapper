@@ -26,10 +26,10 @@ func (s *HostService) SetStorageServer(ss *storage.Server) {
 
 // InitParams contains parameters for initializing a host
 type HostInitParams struct {
-	Name          string
-	StoragePath   string
-	StorageQuota  int64
-	AppendOnly    bool
+	Name         string
+	StoragePath  string
+	StorageQuota int64
+	AppendOnly   bool
 }
 
 // InitResult contains the result of host initialization

@@ -13,6 +13,16 @@ import (
 	"github.com/lcrostarosa/airgapper/backend/internal/storage"
 )
 
+// mapSlice converts a slice of type T to a slice of type R using the provided converter function.
+// This is a generic helper to reduce boilerplate in slice conversion functions.
+func mapSlice[T, R any](items []T, convert func(T) R) []R {
+	result := make([]R, len(items))
+	for i, item := range items {
+		result[i] = convert(item)
+	}
+	return result
+}
+
 // ============================================================================
 // Role Converters
 // ============================================================================
@@ -106,11 +116,9 @@ func toProtoKeyHolder(kh *config.KeyHolder) *airgapperv1.KeyHolder {
 }
 
 func toProtoKeyHolders(holders []config.KeyHolder) []*airgapperv1.KeyHolder {
-	result := make([]*airgapperv1.KeyHolder, len(holders))
-	for i := range holders {
-		result[i] = toProtoKeyHolder(&holders[i])
-	}
-	return result
+	return mapSlice(holders, func(kh config.KeyHolder) *airgapperv1.KeyHolder {
+		return toProtoKeyHolder(&kh)
+	})
 }
 
 func toProtoConsensusInfo(consensus *config.ConsensusConfig) *airgapperv1.ConsensusInfo {
@@ -139,11 +147,7 @@ func toProtoApproval(a consent.Approval) *airgapperv1.Approval {
 }
 
 func toProtoApprovals(approvals []consent.Approval) []*airgapperv1.Approval {
-	result := make([]*airgapperv1.Approval, len(approvals))
-	for i, a := range approvals {
-		result[i] = toProtoApproval(a)
-	}
-	return result
+	return mapSlice(approvals, toProtoApproval)
 }
 
 // ============================================================================
@@ -177,11 +181,7 @@ func toProtoRestoreRequest(req *consent.RestoreRequest) *airgapperv1.RestoreRequ
 }
 
 func toProtoRestoreRequests(reqs []*consent.RestoreRequest) []*airgapperv1.RestoreRequest {
-	result := make([]*airgapperv1.RestoreRequest, len(reqs))
-	for i, req := range reqs {
-		result[i] = toProtoRestoreRequest(req)
-	}
-	return result
+	return mapSlice(reqs, toProtoRestoreRequest)
 }
 
 // ============================================================================
@@ -219,11 +219,7 @@ func toProtoDeletionRequest(del *consent.DeletionRequest) *airgapperv1.DeletionR
 }
 
 func toProtoDeletionRequests(dels []*consent.DeletionRequest) []*airgapperv1.DeletionRequest {
-	result := make([]*airgapperv1.DeletionRequest, len(dels))
-	for i, del := range dels {
-		result[i] = toProtoDeletionRequest(del)
-	}
-	return result
+	return mapSlice(dels, toProtoDeletionRequest)
 }
 
 // ============================================================================

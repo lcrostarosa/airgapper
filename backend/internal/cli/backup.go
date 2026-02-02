@@ -35,7 +35,7 @@ func runBackup(ctx *runner.CommandContext, cmd *cobra.Command, args []string) er
 	}
 
 	client := restic.NewClient(ctx.Config.RepoURL, ctx.Config.Password)
-	if err := client.Backup(args, []string{"airgapper"}); err != nil {
+	if err := client.Backup(cmd.Context(), args, []string{"airgapper"}); err != nil {
 		return fmt.Errorf("backup failed: %w", err)
 	}
 
@@ -68,7 +68,7 @@ func runSnapshots(ctx *runner.CommandContext, cmd *cobra.Command, args []string)
 	logging.Info("Listing snapshots", logging.String("repository", ctx.Config.RepoURL))
 
 	client := restic.NewClient(ctx.Config.RepoURL, ctx.Config.Password)
-	output, err := client.Snapshots()
+	output, err := client.Snapshots(cmd.Context())
 	if err != nil {
 		return fmt.Errorf("failed to list snapshots: %w", err)
 	}

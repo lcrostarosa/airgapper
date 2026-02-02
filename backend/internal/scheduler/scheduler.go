@@ -76,12 +76,12 @@ func NewSchedulerWithConfig(config SchedulerConfig) *Scheduler {
 // Start begins the scheduler
 func (s *Scheduler) Start() {
 	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if s.running {
-		s.mu.Unlock()
 		return
 	}
 	s.running = true
-	s.mu.Unlock()
 
 	s.wg.Add(1)
 	go s.run()

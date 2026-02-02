@@ -3,6 +3,7 @@ package restic
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -32,8 +33,8 @@ func NewClient(repoURL, password string) *Client {
 }
 
 // Init initializes a new restic repository
-func (c *Client) Init() error {
-	cmd := exec.Command("restic", "init", "-r", c.RepoURL)
+func (c *Client) Init(ctx context.Context) error {
+	cmd := exec.CommandContext(ctx, "restic", "init", "-r", c.RepoURL)
 	cmd.Env = append(os.Environ(), "RESTIC_PASSWORD="+c.Password)
 
 	var stderr bytes.Buffer
@@ -51,20 +52,20 @@ func (c *Client) Init() error {
 }
 
 // Backup creates a backup of the specified paths
-func (c *Client) Backup(paths []string, tags []string) error {
+func (c *Client) Backup(ctx context.Context, paths []string, tags []string) error {
 	if len(paths) == 0 {
 		return errors.New("no paths specified for backup")
 	}
 
 	args := []string{"backup", "-r", c.RepoURL}
-	
+
 	for _, tag := range tags {
 		args = append(args, "--tag", tag)
 	}
-	
+
 	args = append(args, paths...)
 
-	cmd := exec.Command("restic", args...)
+	cmd := exec.CommandContext(ctx, "restic", args...)
 	cmd.Env = append(os.Environ(), "RESTIC_PASSWORD="+c.Password)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -73,14 +74,14 @@ func (c *Client) Backup(paths []string, tags []string) error {
 }
 
 // Restore restores a snapshot to the target directory
-func (c *Client) Restore(snapshotID, target string) error {
+func (c *Client) Restore(ctx context.Context, snapshotID, target string) error {
 	if snapshotID == "" {
 		snapshotID = "latest"
 	}
 
 	args := []string{"restore", "-r", c.RepoURL, snapshotID, "--target", target}
 
-	cmd := exec.Command("restic", args...)
+	cmd := exec.CommandContext(ctx, "restic", args...)
 	cmd.Env = append(os.Environ(), "RESTIC_PASSWORD="+c.Password)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -89,8 +90,8 @@ func (c *Client) Restore(snapshotID, target string) error {
 }
 
 // Snapshots lists all snapshots
-func (c *Client) Snapshots() (string, error) {
-	cmd := exec.Command("restic", "snapshots", "-r", c.RepoURL)
+func (c *Client) Snapshots(ctx context.Context) (string, error) {
+	cmd := exec.CommandContext(ctx, "restic", "snapshots", "-r", c.RepoURL)
 	cmd.Env = append(os.Environ(), "RESTIC_PASSWORD="+c.Password)
 
 	output, err := cmd.Output()
@@ -102,8 +103,8 @@ func (c *Client) Snapshots() (string, error) {
 }
 
 // Check verifies repository integrity
-func (c *Client) Check() error {
-	cmd := exec.Command("restic", "check", "-r", c.RepoURL)
+func (c *Client) Check(ctx context.Context) error {
+	cmd := exec.CommandContext(ctx, "restic", "check", "-r", c.RepoURL)
 	cmd.Env = append(os.Environ(), "RESTIC_PASSWORD="+c.Password)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

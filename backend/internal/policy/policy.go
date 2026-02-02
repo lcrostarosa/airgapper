@@ -43,12 +43,12 @@ type Policy struct {
 	Name string `json:"name,omitempty"`
 
 	// Parties involved
-	OwnerName    string `json:"owner_name"`
-	OwnerKeyID   string `json:"owner_key_id"`
-	OwnerPubKey  string `json:"owner_public_key"` // hex-encoded Ed25519
-	HostName     string `json:"host_name"`
-	HostKeyID    string `json:"host_key_id"`
-	HostPubKey   string `json:"host_public_key"` // hex-encoded Ed25519
+	OwnerName   string `json:"owner_name"`
+	OwnerKeyID  string `json:"owner_key_id"`
+	OwnerPubKey string `json:"owner_public_key"` // hex-encoded Ed25519
+	HostName    string `json:"host_name"`
+	HostKeyID   string `json:"host_key_id"`
+	HostPubKey  string `json:"host_public_key"` // hex-encoded Ed25519
 
 	// Data protection terms
 	RetentionDays    int          `json:"retention_days"`     // Minimum days before deletion allowed
@@ -59,9 +59,9 @@ type Policy struct {
 	MaxStorageBytes int64 `json:"max_storage_bytes,omitempty"` // 0 = unlimited
 
 	// Timestamps
-	CreatedAt  time.Time `json:"created_at"`
-	ExpiresAt  time.Time `json:"expires_at,omitempty"` // Optional expiry
-	EffectiveAt time.Time `json:"effective_at"`        // When policy becomes active
+	CreatedAt   time.Time `json:"created_at"`
+	ExpiresAt   time.Time `json:"expires_at,omitempty"` // Optional expiry
+	EffectiveAt time.Time `json:"effective_at"`         // When policy becomes active
 
 	// Signatures (set after both parties sign)
 	OwnerSignature string `json:"owner_signature,omitempty"` // hex-encoded
@@ -86,7 +86,7 @@ type EmergencyPolicy struct {
 	EscalationAfterDays int      `json:"escalation_after_days,omitempty"`
 
 	// Dead man's switch integration
-	DeadManSwitchDays       int `json:"dead_man_switch_days,omitempty"`         // Days of inactivity before trigger
+	DeadManSwitchDays        int `json:"dead_man_switch_days,omitempty"`         // Days of inactivity before trigger
 	DeadManSwitchWarningDays int `json:"dead_man_switch_warning_days,omitempty"` // Days before trigger to warn
 }
 
@@ -117,8 +117,8 @@ type PolicySignData struct {
 	DeletionMode     DeletionMode `json:"deletion_mode"`
 	AppendOnlyLocked bool         `json:"append_only_locked"`
 	MaxStorageBytes  int64        `json:"max_storage_bytes,omitempty"`
-	CreatedAt        int64        `json:"created_at"`  // Unix timestamp
-	ExpiresAt        int64        `json:"expires_at"`  // Unix timestamp, 0 if not set
+	CreatedAt        int64        `json:"created_at"`   // Unix timestamp
+	ExpiresAt        int64        `json:"expires_at"`   // Unix timestamp, 0 if not set
 	EffectiveAt      int64        `json:"effective_at"` // Unix timestamp
 }
 

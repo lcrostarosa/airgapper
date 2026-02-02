@@ -79,7 +79,7 @@ func runRestore(ctx *runner.CommandContext, cmd *cobra.Command, args []string) e
 		logging.String("target", target))
 
 	client := restic.NewClient(ctx.Config.RepoURL, string(password))
-	if err := client.Restore(req.SnapshotID, target); err != nil {
+	if err := client.Restore(cmd.Context(), req.SnapshotID, target); err != nil {
 		return fmt.Errorf("restore failed: %w", err)
 	}
 

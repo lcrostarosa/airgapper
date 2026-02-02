@@ -12,6 +12,23 @@ import (
 // It mirrors the Connect-RPC interceptor pattern for CLI commands.
 type Interceptor func(ctx *CommandContext, cmd *cobra.Command, args []string, next func() error) error
 
+// requireConfigField creates an interceptor that checks a config field condition.
+// This reduces boilerplate for the various Require* interceptors.
+func requireConfigField(check func(*CommandContext) bool, err error) Interceptor {
+	return func(ctx *CommandContext, cmd *cobra.Command, args []string, next func() error) error {
+		if ctx.ConfigErr != nil {
+			return ctx.ConfigErr
+		}
+		if ctx.Config == nil {
+			return ErrNotInitialized
+		}
+		if !check(ctx) {
+			return err
+		}
+		return next()
+	}
+}
+
 // RequireConfig ensures the configuration is loaded before executing the command.
 func RequireConfig() Interceptor {
 	return func(ctx *CommandContext, cmd *cobra.Command, args []string, next func() error) error {
@@ -62,52 +79,19 @@ func RequireHost() Interceptor {
 // RequirePassword ensures a password is available.
 // Implicitly requires config to be loaded.
 func RequirePassword() Interceptor {
-	return func(ctx *CommandContext, cmd *cobra.Command, args []string, next func() error) error {
-		if ctx.ConfigErr != nil {
-			return ctx.ConfigErr
-		}
-		if ctx.Config == nil {
-			return ErrNotInitialized
-		}
-		if ctx.Config.Password == "" {
-			return ErrNoPassword
-		}
-		return next()
-	}
+	return requireConfigField((*CommandContext).HasPassword, ErrNoPassword)
 }
 
 // RequirePrivateKey ensures a private key is available.
 // Implicitly requires config to be loaded.
 func RequirePrivateKey() Interceptor {
-	return func(ctx *CommandContext, cmd *cobra.Command, args []string, next func() error) error {
-		if ctx.ConfigErr != nil {
-			return ctx.ConfigErr
-		}
-		if ctx.Config == nil {
-			return ErrNotInitialized
-		}
-		if ctx.Config.PrivateKey == nil {
-			return ErrNoPrivateKey
-		}
-		return next()
-	}
+	return requireConfigField((*CommandContext).HasPrivateKey, ErrNoPrivateKey)
 }
 
 // RequireShare ensures a local key share is available.
 // Implicitly requires config to be loaded.
 func RequireShare() Interceptor {
-	return func(ctx *CommandContext, cmd *cobra.Command, args []string, next func() error) error {
-		if ctx.ConfigErr != nil {
-			return ctx.ConfigErr
-		}
-		if ctx.Config == nil {
-			return ErrNotInitialized
-		}
-		if ctx.Config.LocalShare == nil {
-			return ErrNoShare
-		}
-		return next()
-	}
+	return requireConfigField((*CommandContext).HasShare, ErrNoShare)
 }
 
 // RecordActivity updates the last activity timestamp after successful command execution.
@@ -115,8 +99,9 @@ func RequireShare() Interceptor {
 func RecordActivity() Interceptor {
 	return func(ctx *CommandContext, cmd *cobra.Command, args []string, next func() error) error {
 		err := next()
-		if err == nil && ctx.Config != nil {
-			ctx.Config.RecordActivity()
+		if err == nil && ctx.Config != nil && ctx.Config.Emergency != nil {
+			ctx.Config.Emergency.GetDeadManSwitch().RecordActivity()
+			ctx.Config.Save()
 		}
 		return err
 	}

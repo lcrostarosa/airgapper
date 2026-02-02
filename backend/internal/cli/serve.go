@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"net/http"
 	"os"
 	"strings"
@@ -128,9 +129,11 @@ func setupScheduler(cmd *cobra.Command, serveCfg *config.Config, apiServer *api.
 
 	backupFunc := func() error {
 		client := restic.NewClient(serveCfg.RepoURL, serveCfg.Password)
-		err := client.Backup(backupPaths, []string{"airgapper", "scheduled"})
-		if err == nil {
-			serveCfg.RecordActivity()
+		// Use background context for scheduled backups since they run asynchronously
+		err := client.Backup(context.Background(), backupPaths, []string{"airgapper", "scheduled"})
+		if err == nil && serveCfg.Emergency != nil {
+			serveCfg.Emergency.GetDeadManSwitch().RecordActivity()
+			serveCfg.Save()
 		}
 		return err
 	}

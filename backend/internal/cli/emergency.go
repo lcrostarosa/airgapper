@@ -38,7 +38,8 @@ func runHeartbeat(ctx *runner.CommandContext, cmd *cobra.Command, args []string)
 		return nil
 	}
 
-	if err := ctx.Config.RecordActivity(); err != nil {
+	ctx.Config.Emergency.GetDeadManSwitch().RecordActivity()
+	if err := ctx.SaveConfig(); err != nil {
 		return fmt.Errorf("failed to record activity: %w", err)
 	}
 
@@ -75,8 +76,8 @@ func runExportShare(ctx *runner.CommandContext, cmd *cobra.Command, args []strin
 		return err
 	}
 
-	k := ctx.Config.GetRecoveryThreshold()
-	n := ctx.Config.GetRecoveryTotalShares()
+	k := ctx.Config.Emergency.GetRecovery().GetThreshold()
+	n := ctx.Config.Emergency.GetRecovery().GetTotalShares()
 
 	if shareIndex > n || shareIndex < 1 {
 		return fmt.Errorf("share index %d is out of range (1-%d)", shareIndex, n)

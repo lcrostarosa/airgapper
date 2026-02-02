@@ -35,11 +35,9 @@ type Server struct {
 	scheduler               *scheduler.Scheduler
 
 	// Verification components
-	auditChain       *verification.AuditChain
-	ticketManager    *verification.TicketManager
-	challengeManager *verification.ChallengeManager
-	witnessManager   *verification.WitnessManager
-	verificationCfg  *verification.VerificationSystemConfig
+	auditChain      *verification.AuditChain
+	ticketManager   *verification.TicketManager
+	verificationCfg *verification.VerificationSystemConfig
 }
 
 // ServerOptions contains optional pre-initialized components
@@ -50,11 +48,9 @@ type ServerOptions struct {
 	Scheduler        *scheduler.Scheduler
 
 	// Verification components
-	AuditChain       *verification.AuditChain
-	TicketManager    *verification.TicketManager
-	ChallengeManager *verification.ChallengeManager
-	WitnessManager   *verification.WitnessManager
-	VerificationCfg  *verification.VerificationSystemConfig
+	AuditChain      *verification.AuditChain
+	TicketManager   *verification.TicketManager
+	VerificationCfg *verification.VerificationSystemConfig
 }
 
 // NewServer creates a new Connect-RPC server with all service handlers
@@ -79,8 +75,6 @@ func NewServer(cfg *config.Config, opts *ServerOptions) *Server {
 		// Verification components
 		s.auditChain = opts.AuditChain
 		s.ticketManager = opts.TicketManager
-		s.challengeManager = opts.ChallengeManager
-		s.witnessManager = opts.WitnessManager
 		s.verificationCfg = opts.VerificationCfg
 	}
 
@@ -210,16 +204,6 @@ func (s *Server) AuditChain() *verification.AuditChain {
 // TicketManager returns the ticket manager instance (may be nil)
 func (s *Server) TicketManager() *verification.TicketManager {
 	return s.ticketManager
-}
-
-// ChallengeManager returns the challenge manager instance (may be nil)
-func (s *Server) ChallengeManager() *verification.ChallengeManager {
-	return s.challengeManager
-}
-
-// WitnessManager returns the witness manager instance (may be nil)
-func (s *Server) WitnessManager() *verification.WitnessManager {
-	return s.witnessManager
 }
 
 // VerificationConfig returns the verification config (may be nil)

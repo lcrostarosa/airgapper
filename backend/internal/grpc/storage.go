@@ -27,18 +27,18 @@ func (s *storageServer) GetStorageStatus(
 	status := s.server.hostSvc.GetStorageStatus()
 
 	return connect.NewResponse(&airgapperv1.GetStorageStatusResponse{
-		Configured:      status.Configured,
-		Running:         status.Running,
-		BasePath:        status.BasePath,
-		AppendOnly:      status.AppendOnly,
-		QuotaBytes:      status.QuotaBytes,
-		UsedBytes:       status.UsedBytes,
-		RequestCount:    status.RequestCount,
-		HasPolicy:       status.HasPolicy,
-		PolicyId:        status.PolicyID,
-		DiskUsagePct:    int32(status.DiskUsagePct),
-		DiskFreeBytes:   status.DiskFreeBytes,
-		DiskTotalBytes:  status.DiskTotalBytes,
+		Configured:     status.Configured,
+		Running:        status.Running,
+		BasePath:       status.BasePath,
+		AppendOnly:     status.AppendOnly,
+		QuotaBytes:     status.QuotaBytes,
+		UsedBytes:      status.UsedBytes,
+		RequestCount:   status.RequestCount,
+		HasPolicy:      status.HasPolicy,
+		PolicyId:       status.PolicyID,
+		DiskUsagePct:   int32(status.DiskUsagePct),
+		DiskFreeBytes:  status.DiskFreeBytes,
+		DiskTotalBytes: status.DiskTotalBytes,
 	}), nil
 }
 

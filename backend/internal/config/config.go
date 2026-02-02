@@ -3,12 +3,12 @@ package config
 
 import (
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/lcrostarosa/airgapper/backend/internal/emergency"
+	apperrors "github.com/lcrostarosa/airgapper/backend/internal/errors"
 	"github.com/lcrostarosa/airgapper/backend/internal/verification"
 )
 
@@ -111,7 +111,7 @@ func Load(configDir string) (*Config, error) {
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, errors.New("airgapper not initialized - run 'airgapper init' first")
+			return nil, apperrors.ErrNotInitialized
 		}
 		return nil, err
 	}
@@ -173,7 +173,7 @@ func (c *Config) SaveShare(share []byte, index byte) error {
 
 func (c *Config) LoadShare() ([]byte, byte, error) {
 	if c.LocalShare == nil {
-		return nil, 0, errors.New("no local share found")
+		return nil, 0, apperrors.ErrNoLocalShare
 	}
 	return c.LocalShare, c.ShareIndex, nil
 }
@@ -190,19 +190,19 @@ func (c *Config) SetSchedule(schedule string, paths []string) error {
 
 // --- Mode detection ---
 
-func (c *Config) UsesSSSMode() bool      { return c.Consensus == nil && c.LocalShare != nil }
+func (c *Config) UsesSSSMode() bool       { return c.Consensus == nil && c.LocalShare != nil }
 func (c *Config) UsesConsensusMode() bool { return c.Consensus != nil }
 
 // --- Consensus methods ---
 
 func (c *Config) AddKeyHolder(holder KeyHolder) error {
 	if c.Consensus == nil {
-		return errors.New("consensus not configured")
+		return apperrors.ErrConsensusNotConfigured
 	}
 
 	for _, kh := range c.Consensus.KeyHolders {
 		if kh.ID == holder.ID {
-			return errors.New("key holder already registered")
+			return apperrors.ErrKeyHolderExists
 		}
 	}
 
@@ -236,44 +236,6 @@ func (c *Config) RequiredApprovals() int {
 		return 2 // Legacy SSS mode
 	}
 	return c.Consensus.Threshold
-}
-
-// --- Emergency recovery methods (nil-safe delegation) ---
-
-// RecordActivity updates the dead man's switch last activity
-func (c *Config) RecordActivity() error {
-	c.Emergency.GetDeadManSwitch().RecordActivity()
-	return c.Save()
-}
-
-// GetRecoveryThreshold returns shares needed for recovery
-func (c *Config) GetRecoveryThreshold() int {
-	return c.Emergency.GetRecovery().GetThreshold()
-}
-
-// GetRecoveryTotalShares returns total recovery shares
-func (c *Config) GetRecoveryTotalShares() int {
-	return c.Emergency.GetRecovery().GetTotalShares()
-}
-
-// IsOverrideAllowed checks if an override type is permitted
-func (c *Config) IsOverrideAllowed(t emergency.OverrideType) bool {
-	return c.Emergency.GetOverride().IsTypeAllowed(t)
-}
-
-// GetDaysSinceActivity returns days since last activity
-func (c *Config) GetDaysSinceActivity() int {
-	return c.Emergency.GetDeadManSwitch().DaysSinceActivity()
-}
-
-// IsDeadManSwitchTriggered checks if switch should trigger
-func (c *Config) IsDeadManSwitchTriggered() bool {
-	return c.Emergency.GetDeadManSwitch().IsTriggered()
-}
-
-// IsDeadManSwitchWarning checks if in warning period
-func (c *Config) IsDeadManSwitchWarning() bool {
-	return c.Emergency.GetDeadManSwitch().IsWarning()
 }
 
 // HasEmergencyConfig returns true if any emergency features are configured
