@@ -140,3 +140,18 @@ func (s *HostService) ReceiveShare(share []byte, shareIndex byte, repoURL, peerN
 	}
 	return s.cfg.Save()
 }
+
+// GetHostKeys returns the host's key ID and private key for signing.
+// Returns empty strings/nil if the host is not initialized.
+func (s *HostService) GetHostKeys() (keyID string, privateKey []byte) {
+	if s.cfg.Role != config.RoleHost || s.cfg.PrivateKey == nil {
+		return "", nil
+	}
+	keyID = crypto.KeyID(s.cfg.PublicKey)
+	return keyID, s.cfg.PrivateKey
+}
+
+// GetHostPublicKey returns the host's public key.
+func (s *HostService) GetHostPublicKey() []byte {
+	return s.cfg.PublicKey
+}

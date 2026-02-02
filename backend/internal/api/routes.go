@@ -74,6 +74,33 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/integrity/verification-config", s.handleUpdateVerificationConfig)
 	mux.HandleFunc("POST /api/integrity/run-check", s.handleRunManualCheck)
 
+	// Host verification system
+	mux.HandleFunc("GET /api/verification/status", s.handleGetVerificationStatus)
+
+	// Audit chain
+	mux.HandleFunc("GET /api/audit/entries", s.handleGetAuditEntries)
+	mux.HandleFunc("GET /api/audit/verify", s.handleVerifyAuditChain)
+	mux.HandleFunc("GET /api/audit/export", s.handleExportAuditChain)
+
+	// Challenge-response
+	mux.HandleFunc("POST /api/challenge", s.handleCreateChallenge)
+	mux.HandleFunc("POST /api/challenge/receive", s.handleReceiveChallenge)
+	mux.HandleFunc("GET /api/challenge", s.handleListChallenges)
+	mux.HandleFunc("POST /api/challenge/{id}/respond", s.handleRespondToChallenge)
+	mux.HandleFunc("POST /api/challenge/verify", s.handleVerifyChallenge)
+
+	// Deletion tickets
+	mux.HandleFunc("POST /api/tickets", s.handleCreateTicket)
+	mux.HandleFunc("POST /api/tickets/register", s.handleRegisterTicket)
+	mux.HandleFunc("GET /api/tickets", s.handleListTickets)
+	mux.HandleFunc("GET /api/tickets/{id}", s.handleGetTicket)
+	mux.HandleFunc("GET /api/tickets/{id}/usage", s.handleGetTicketUsage)
+
+	// Witness
+	mux.HandleFunc("POST /api/witness/checkpoint", s.handleSubmitWitnessCheckpoint)
+	mux.HandleFunc("POST /api/witness/checkpoint/create", s.handleCreateWitnessCheckpoint)
+	mux.HandleFunc("GET /api/witness/checkpoint/{id}", s.handleGetWitnessCheckpoint)
+
 	// Mount storage server if configured
 	if s.storageServer != nil {
 		mux.Handle("/storage/", http.StripPrefix("/storage", storage.WithLogging(s.storageServer.Handler())))

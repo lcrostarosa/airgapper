@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/lcrostarosa/airgapper/backend/internal/emergency"
+	"github.com/lcrostarosa/airgapper/backend/internal/verification"
 )
 
 // Role defines the role of this node
@@ -86,6 +87,9 @@ type Config struct {
 
 	// Emergency recovery settings (uses emergency package types)
 	Emergency *emergency.Config `json:"emergency,omitempty"`
+
+	// Host verification settings (uses verification package types)
+	Verification *verification.VerificationSystemConfig `json:"verification,omitempty"`
 
 	// Paths (not serialized)
 	ConfigDir string `json:"-"`

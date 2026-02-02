@@ -196,3 +196,18 @@ func (s *VaultService) HasConsensus() bool {
 func (s *VaultService) IsInitialized() bool {
 	return s.cfg.Name != ""
 }
+
+// GetOwnerKeys returns the owner's key ID and private key for signing.
+// Returns empty strings/nil if the vault is not initialized as owner.
+func (s *VaultService) GetOwnerKeys() (keyID string, privateKey []byte) {
+	if s.cfg.Role != config.RoleOwner || s.cfg.PrivateKey == nil {
+		return "", nil
+	}
+	keyID = crypto.KeyID(s.cfg.PublicKey)
+	return keyID, s.cfg.PrivateKey
+}
+
+// GetOwnerPublicKey returns the owner's public key.
+func (s *VaultService) GetOwnerPublicKey() []byte {
+	return s.cfg.PublicKey
+}

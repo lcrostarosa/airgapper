@@ -15,6 +15,7 @@ import (
 	"github.com/lcrostarosa/airgapper/backend/internal/scheduler"
 	"github.com/lcrostarosa/airgapper/backend/internal/service"
 	"github.com/lcrostarosa/airgapper/backend/internal/storage"
+	"github.com/lcrostarosa/airgapper/backend/internal/verification"
 )
 
 // Server wraps all Connect-RPC service handlers
@@ -32,6 +33,13 @@ type Server struct {
 	integrityChecker        *integrity.Checker
 	managedScheduledChecker *integrity.ManagedScheduledChecker
 	scheduler               *scheduler.Scheduler
+
+	// Verification components
+	auditChain       *verification.AuditChain
+	ticketManager    *verification.TicketManager
+	challengeManager *verification.ChallengeManager
+	witnessManager   *verification.WitnessManager
+	verificationCfg  *verification.VerificationSystemConfig
 }
 
 // ServerOptions contains optional pre-initialized components
@@ -40,6 +48,13 @@ type ServerOptions struct {
 	IntegrityChecker *integrity.Checker
 	ScheduledChecker *integrity.ManagedScheduledChecker
 	Scheduler        *scheduler.Scheduler
+
+	// Verification components
+	AuditChain       *verification.AuditChain
+	TicketManager    *verification.TicketManager
+	ChallengeManager *verification.ChallengeManager
+	WitnessManager   *verification.WitnessManager
+	VerificationCfg  *verification.VerificationSystemConfig
 }
 
 // NewServer creates a new Connect-RPC server with all service handlers
@@ -60,6 +75,13 @@ func NewServer(cfg *config.Config, opts *ServerOptions) *Server {
 		s.integrityChecker = opts.IntegrityChecker
 		s.managedScheduledChecker = opts.ScheduledChecker
 		s.scheduler = opts.Scheduler
+
+		// Verification components
+		s.auditChain = opts.AuditChain
+		s.ticketManager = opts.TicketManager
+		s.challengeManager = opts.ChallengeManager
+		s.witnessManager = opts.WitnessManager
+		s.verificationCfg = opts.VerificationCfg
 	}
 
 	return s
@@ -178,4 +200,29 @@ func (s *Server) IntegrityChecker() *integrity.Checker {
 // ManagedScheduledChecker returns the scheduled checker instance (may be nil)
 func (s *Server) ManagedScheduledChecker() *integrity.ManagedScheduledChecker {
 	return s.managedScheduledChecker
+}
+
+// AuditChain returns the audit chain instance (may be nil)
+func (s *Server) AuditChain() *verification.AuditChain {
+	return s.auditChain
+}
+
+// TicketManager returns the ticket manager instance (may be nil)
+func (s *Server) TicketManager() *verification.TicketManager {
+	return s.ticketManager
+}
+
+// ChallengeManager returns the challenge manager instance (may be nil)
+func (s *Server) ChallengeManager() *verification.ChallengeManager {
+	return s.challengeManager
+}
+
+// WitnessManager returns the witness manager instance (may be nil)
+func (s *Server) WitnessManager() *verification.WitnessManager {
+	return s.witnessManager
+}
+
+// VerificationConfig returns the verification config (may be nil)
+func (s *Server) VerificationConfig() *verification.VerificationSystemConfig {
+	return s.verificationCfg
 }

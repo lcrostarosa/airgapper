@@ -19,6 +19,7 @@ import (
 
 	"github.com/lcrostarosa/airgapper/backend/internal/logging"
 	"github.com/lcrostarosa/airgapper/backend/internal/policy"
+	"github.com/lcrostarosa/airgapper/backend/internal/verification"
 )
 
 // Valid restic file types
@@ -56,10 +57,15 @@ type Server struct {
 	// Policy enforcement
 	policy *policy.Policy
 
-	// Audit logging
+	// Audit logging (legacy)
 	auditLog        []AuditEntry
 	auditMu         sync.RWMutex
 	maxAuditEntries int
+
+	// Verification features (optional)
+	verificationConfig *verification.VerificationSystemConfig
+	auditChain         *verification.AuditChain
+	ticketManager      *verification.TicketManager
 
 	// Stats
 	totalBytes   int64
@@ -68,11 +74,18 @@ type Server struct {
 
 // Config for creating a new storage server
 type Config struct {
-	BasePath         string
-	AppendOnly       bool
-	QuotaBytes       int64          // Per-repo quota (0 = unlimited)
-	Policy           *policy.Policy // Optional policy for enforcement
-	MaxDiskUsagePct  int            // Max disk usage percentage (0 = use default 95%)
+	BasePath        string
+	AppendOnly      bool
+	QuotaBytes      int64          // Per-repo quota (0 = unlimited)
+	Policy          *policy.Policy // Optional policy for enforcement
+	MaxDiskUsagePct int            // Max disk usage percentage (0 = use default 95%)
+
+	// Verification features (optional)
+	Verification   *verification.VerificationSystemConfig
+	HostKeyID      string // Host key ID for signing audit entries
+	HostPrivateKey []byte // Host private key for signatures
+	HostPublicKey  []byte // Host public key for verification
+	OwnerPublicKey []byte // Owner public key for ticket verification
 }
 
 // NewServer creates a new storage server
@@ -92,12 +105,13 @@ func NewServer(cfg Config) (*Server, error) {
 	}
 
 	s := &Server{
-		basePath:        cfg.BasePath,
-		appendOnly:      cfg.AppendOnly,
-		quotaBytes:      cfg.QuotaBytes,
-		maxDiskUsagePct: maxDiskPct,
-		policy:          cfg.Policy,
-		maxAuditEntries: 10000, // Keep last 10k audit entries
+		basePath:           cfg.BasePath,
+		appendOnly:         cfg.AppendOnly,
+		quotaBytes:         cfg.QuotaBytes,
+		maxDiskUsagePct:    maxDiskPct,
+		policy:             cfg.Policy,
+		maxAuditEntries:    10000, // Keep last 10k audit entries
+		verificationConfig: cfg.Verification,
 	}
 
 	// Load policy from disk if exists and not provided in config
@@ -108,7 +122,62 @@ func NewServer(cfg Config) (*Server, error) {
 	// Load audit log from disk
 	s.loadAuditLog()
 
+	// Initialize verification features if enabled
+	if err := s.initVerification(cfg); err != nil {
+		logging.Warnf("[storage] verification initialization failed: %v", err)
+	}
+
 	return s, nil
+}
+
+// initVerification initializes verification features based on config.
+func (s *Server) initVerification(cfg Config) error {
+	if cfg.Verification == nil || !cfg.Verification.Enabled {
+		return nil
+	}
+
+	verifyPath := filepath.Join(cfg.BasePath, ".airgapper-verification")
+
+	// Initialize audit chain if enabled
+	if cfg.Verification.IsAuditChainEnabled() {
+		signEntries := cfg.Verification.AuditChain.SignEntries
+		chain, err := verification.NewAuditChain(
+			filepath.Join(verifyPath, "audit"),
+			cfg.HostKeyID,
+			cfg.HostPrivateKey,
+			cfg.HostPublicKey,
+			signEntries,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to initialize audit chain: %w", err)
+		}
+		s.auditChain = chain
+		logging.Infof("[storage] Cryptographic audit chain enabled (signing: %v)", signEntries)
+	}
+
+	// Initialize ticket manager if enabled
+	if cfg.Verification.IsTicketsEnabled() {
+		validityDays := cfg.Verification.Tickets.ValidityDays
+		if validityDays <= 0 {
+			validityDays = 7
+		}
+		tm, err := verification.NewTicketManager(
+			filepath.Join(verifyPath, "tickets"),
+			cfg.OwnerPublicKey,
+			cfg.HostPrivateKey,
+			cfg.HostPublicKey,
+			cfg.HostKeyID,
+			validityDays,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to initialize ticket manager: %w", err)
+		}
+		s.ticketManager = tm
+		logging.Infof("[storage] Deletion ticket system enabled (require for snapshots: %v)",
+			cfg.Verification.Tickets.RequireForSnapshots)
+	}
+
+	return nil
 }
 
 // Handler returns an http.Handler for the storage server
@@ -344,6 +413,22 @@ func (s *Server) saveAuditLog() {
 }
 
 func (s *Server) audit(operation, path, details string, success bool, errMsg string) {
+	// Use cryptographic audit chain if enabled
+	if s.auditChain != nil {
+		_, err := s.auditChain.Record(operation, path, details, success, errMsg)
+		if err != nil {
+			logging.Warnf("[storage] failed to record to audit chain: %v", err)
+		}
+		// Still log to stdout
+		if success {
+			logging.Debugf("[storage-audit] %s %s %s", operation, path, details)
+		} else {
+			logging.Warnf("[storage-audit] %s %s FAILED: %s", operation, path, errMsg)
+		}
+		return
+	}
+
+	// Legacy audit logging
 	s.auditMu.Lock()
 	defer s.auditMu.Unlock()
 
@@ -390,14 +475,48 @@ func (s *Server) GetAuditLog(limit int) []AuditEntry {
 	return result
 }
 
-// checkDeleteAllowed checks if deletion is allowed based on policy
+// checkDeleteAllowed checks if deletion is allowed based on policy and tickets
 func (s *Server) checkDeleteAllowed(filePath string) (bool, string) {
+	return s.checkDeleteAllowedWithTicket(filePath, "", "")
+}
+
+// checkDeleteAllowedWithTicket checks if deletion is allowed, optionally with a ticket
+func (s *Server) checkDeleteAllowedWithTicket(filePath, snapshotID, ticketID string) (bool, string) {
 	// Always check append-only first
 	if s.appendOnly {
 		return false, "delete not allowed in append-only mode"
 	}
 
-	// If no policy, allow (legacy behavior)
+	// Check if ticket system requires tickets for this deletion
+	if s.ticketManager != nil && s.verificationConfig != nil && s.verificationConfig.IsTicketsEnabled() {
+		// Determine if this is a snapshot deletion that requires a ticket
+		isSnapshot := strings.Contains(filePath, "/snapshots/")
+		requireTicket := (isSnapshot && s.verificationConfig.Tickets.RequireForSnapshots)
+
+		if requireTicket {
+			// If a ticket ID was provided, validate it
+			if ticketID != "" {
+				ticket := s.ticketManager.GetTicket(ticketID)
+				if ticket == nil {
+					return false, "invalid ticket ID"
+				}
+				// Ticket exists - allow deletion (ticket was already validated on registration)
+			} else {
+				// No ticket provided - try to find a valid one
+				foundTicketID, err := s.ticketManager.ValidateDelete(filePath, snapshotID)
+				if err != nil {
+					return false, "deletion requires valid ticket: " + err.Error()
+				}
+				ticketID = foundTicketID
+			}
+
+			// Record ticket usage
+			if ticketID != "" {
+				s.ticketManager.RecordUsage(ticketID, []string{filePath})
+			}
+		}
+	}
+
 	if s.policy == nil {
 		return true, ""
 	}
@@ -820,6 +939,31 @@ func isValidFileName(name string) bool {
 		return false
 	}
 	return true
+}
+
+// --- Verification Component Accessors ---
+
+// AuditChain returns the audit chain (may be nil if not enabled).
+func (s *Server) AuditChain() *verification.AuditChain {
+	return s.auditChain
+}
+
+// TicketManager returns the ticket manager (may be nil if not enabled).
+func (s *Server) TicketManager() *verification.TicketManager {
+	return s.ticketManager
+}
+
+// VerificationConfig returns the verification configuration (may be nil).
+func (s *Server) VerificationConfig() *verification.VerificationSystemConfig {
+	return s.verificationConfig
+}
+
+// RegisterTicket registers a deletion ticket with the storage server.
+func (s *Server) RegisterTicket(ticket *verification.DeletionTicket) error {
+	if s.ticketManager == nil {
+		return fmt.Errorf("ticket system not enabled")
+	}
+	return s.ticketManager.RegisterTicket(ticket)
 }
 
 // Logging middleware for storage requests
