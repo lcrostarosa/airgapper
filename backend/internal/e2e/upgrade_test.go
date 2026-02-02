@@ -19,6 +19,8 @@ import (
 	"github.com/lcrostarosa/airgapper/backend/internal/policy"
 	"github.com/lcrostarosa/airgapper/backend/internal/sss"
 	"github.com/lcrostarosa/airgapper/backend/internal/storage"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestUpgrade_LegacySSSConfig tests loading a config from legacy SSS mode
@@ -47,43 +49,21 @@ func TestUpgrade_LegacySSSConfig(t *testing.T) {
 
 	// Load with current code
 	cfg, err := config.Load(tmpDir)
-	if err != nil {
-		t.Fatalf("Failed to load legacy config: %v", err)
-	}
+	require.NoError(t, err, "Failed to load legacy config")
 
 	// Verify all fields loaded correctly
-	if cfg.Name != "alice-backup" {
-		t.Errorf("Name mismatch: got %s", cfg.Name)
-	}
-	if cfg.Role != config.RoleOwner {
-		t.Errorf("Role mismatch: got %s", cfg.Role)
-	}
-	if cfg.RepoURL != "rest:http://bob:8000/" {
-		t.Errorf("RepoURL mismatch: got %s", cfg.RepoURL)
-	}
-	if cfg.Password != "secretpassword123" {
-		t.Errorf("Password mismatch")
-	}
-	if cfg.LocalShare == nil {
-		t.Error("LocalShare should be loaded")
-	}
-	if cfg.ShareIndex != 1 {
-		t.Errorf("ShareIndex mismatch: got %d", cfg.ShareIndex)
-	}
-	if cfg.Peer == nil || cfg.Peer.Name != "bob" {
-		t.Error("Peer info not loaded correctly")
-	}
-	if len(cfg.BackupPaths) != 1 || cfg.BackupPaths[0] != "/home/alice/documents" {
-		t.Error("BackupPaths not loaded correctly")
-	}
+	assert.Equal(t, "alice-backup", cfg.Name, "Name mismatch")
+	assert.Equal(t, config.RoleOwner, cfg.Role, "Role mismatch")
+	assert.Equal(t, "rest:http://bob:8000/", cfg.RepoURL, "RepoURL mismatch")
+	assert.Equal(t, "secretpassword123", cfg.Password, "Password mismatch")
+	assert.NotNil(t, cfg.LocalShare, "LocalShare should be loaded")
+	assert.Equal(t, byte(1), cfg.ShareIndex, "ShareIndex mismatch")
+	assert.True(t, cfg.Peer != nil && cfg.Peer.Name == "bob", "Peer info not loaded correctly")
+	assert.True(t, len(cfg.BackupPaths) == 1 && cfg.BackupPaths[0] == "/home/alice/documents", "BackupPaths not loaded correctly")
 
 	// Verify mode detection
-	if !cfg.UsesSSSMode() {
-		t.Error("Should detect SSS mode")
-	}
-	if cfg.UsesConsensusMode() {
-		t.Error("Should not detect consensus mode")
-	}
+	assert.True(t, cfg.UsesSSSMode(), "Should detect SSS mode")
+	assert.False(t, cfg.UsesConsensusMode(), "Should not detect consensus mode")
 }
 
 // TestUpgrade_LegacyHostConfig tests loading a legacy host config
@@ -109,27 +89,15 @@ func TestUpgrade_LegacyHostConfig(t *testing.T) {
 	os.WriteFile(configPath, data, 0600)
 
 	cfg, err := config.Load(tmpDir)
-	if err != nil {
-		t.Fatalf("Failed to load legacy host config: %v", err)
-	}
+	require.NoError(t, err, "Failed to load legacy host config")
 
-	if cfg.Role != config.RoleHost {
-		t.Errorf("Role mismatch: got %s", cfg.Role)
-	}
-	if cfg.IsOwner() {
-		t.Error("Should not be owner")
-	}
-	if !cfg.IsHost() {
-		t.Error("Should be host")
-	}
+	assert.Equal(t, config.RoleHost, cfg.Role, "Role mismatch")
+	assert.False(t, cfg.IsOwner(), "Should not be owner")
+	assert.True(t, cfg.IsHost(), "Should be host")
 
 	// New fields should be empty/zero
-	if cfg.StoragePath != "" {
-		t.Error("StoragePath should be empty for legacy config")
-	}
-	if cfg.Consensus != nil {
-		t.Error("Consensus should be nil for legacy config")
-	}
+	assert.Empty(t, cfg.StoragePath, "StoragePath should be empty for legacy config")
+	assert.Nil(t, cfg.Consensus, "Consensus should be nil for legacy config")
 }
 
 // TestUpgrade_ConsensusConfigWithNewFields tests that configs with consensus
@@ -175,25 +143,13 @@ func TestUpgrade_ConsensusConfigWithNewFields(t *testing.T) {
 	os.WriteFile(configPath, data, 0600)
 
 	cfg, err := config.Load(tmpDir)
-	if err != nil {
-		t.Fatalf("Failed to load consensus config: %v", err)
-	}
+	require.NoError(t, err, "Failed to load consensus config")
 
-	if !cfg.UsesConsensusMode() {
-		t.Error("Should detect consensus mode")
-	}
-	if cfg.UsesSSSMode() {
-		t.Error("Should not detect SSS mode")
-	}
-	if cfg.Consensus.Threshold != 2 {
-		t.Errorf("Threshold mismatch: got %d", cfg.Consensus.Threshold)
-	}
-	if len(cfg.Consensus.KeyHolders) != 2 {
-		t.Errorf("KeyHolders count mismatch: got %d", len(cfg.Consensus.KeyHolders))
-	}
-	if cfg.RequiredApprovals() != 2 {
-		t.Errorf("RequiredApprovals mismatch: got %d", cfg.RequiredApprovals())
-	}
+	assert.True(t, cfg.UsesConsensusMode(), "Should detect consensus mode")
+	assert.False(t, cfg.UsesSSSMode(), "Should not detect SSS mode")
+	assert.Equal(t, 2, cfg.Consensus.Threshold, "Threshold mismatch")
+	assert.Len(t, cfg.Consensus.KeyHolders, 2, "KeyHolders count mismatch")
+	assert.Equal(t, 2, cfg.RequiredApprovals(), "RequiredApprovals mismatch")
 }
 
 // TestUpgrade_SSSKeysStillWork tests that SSS shares created with old code
@@ -204,9 +160,7 @@ func TestUpgrade_SSSKeysStillWork(t *testing.T) {
 	password := "my-secret-backup-password-12345"
 
 	shares, err := sss.Split([]byte(password), 2, 2)
-	if err != nil {
-		t.Fatalf("Failed to split password: %v", err)
-	}
+	require.NoError(t, err, "Failed to split password")
 
 	// Simulate storing shares in "old" config format
 	// Config stores the share Data and Index separately
@@ -246,13 +200,9 @@ func TestUpgrade_SSSKeysStillWork(t *testing.T) {
 
 	// Combine shares - this should work exactly as before
 	combined, err := sss.Combine([]sss.Share{ownerShare, hostShare})
-	if err != nil {
-		t.Fatalf("Failed to combine shares: %v", err)
-	}
+	require.NoError(t, err, "Failed to combine shares")
 
-	if string(combined) != password {
-		t.Errorf("Password mismatch after combine: got %s, want %s", string(combined), password)
-	}
+	assert.Equal(t, password, string(combined), "Password mismatch after combine")
 }
 
 // TestUpgrade_ExistingRestoreRequests tests that pending restore requests
@@ -283,35 +233,21 @@ func TestUpgrade_ExistingRestoreRequests(t *testing.T) {
 	mgr := consent.NewManager(tmpDir)
 
 	req, err := mgr.GetRequest("abc123def456")
-	if err != nil {
-		t.Fatalf("Failed to load old request: %v", err)
-	}
+	require.NoError(t, err, "Failed to load old request")
 
-	if req.Requester != "alice" {
-		t.Errorf("Requester mismatch: got %s", req.Requester)
-	}
-	if req.Status != consent.StatusPending {
-		t.Errorf("Status mismatch: got %s", req.Status)
-	}
-	if req.SnapshotID != "latest" {
-		t.Errorf("SnapshotID mismatch: got %s", req.SnapshotID)
-	}
+	assert.Equal(t, "alice", req.Requester, "Requester mismatch")
+	assert.Equal(t, consent.StatusPending, req.Status, "Status mismatch")
+	assert.Equal(t, "latest", req.SnapshotID, "SnapshotID mismatch")
 
 	// New fields should be zero
-	if req.RequiredApprovals != 0 {
-		t.Errorf("RequiredApprovals should be 0 for old requests: got %d", req.RequiredApprovals)
-	}
+	assert.Equal(t, 0, req.RequiredApprovals, "RequiredApprovals should be 0 for old requests")
 
 	// Should be able to approve it (legacy mode)
 	err = mgr.Approve("abc123def456", "bob", []byte("share-data"))
-	if err != nil {
-		t.Fatalf("Failed to approve old request: %v", err)
-	}
+	require.NoError(t, err, "Failed to approve old request")
 
 	approved, _ := mgr.GetRequest("abc123def456")
-	if approved.Status != consent.StatusApproved {
-		t.Error("Request should be approved")
-	}
+	assert.Equal(t, consent.StatusApproved, approved.Status, "Request should be approved")
 }
 
 // TestUpgrade_ExistingPolicyFormat tests that policies created with
@@ -341,20 +277,13 @@ func TestUpgrade_ExistingPolicyFormat(t *testing.T) {
 	// Load and verify
 	loadedData, _ := os.ReadFile(policyPath)
 	loaded, err := policy.FromJSON(loadedData)
-	if err != nil {
-		t.Fatalf("Failed to load policy: %v", err)
-	}
+	require.NoError(t, err, "Failed to load policy")
 
-	if err := loaded.Verify(); err != nil {
-		t.Fatalf("Policy verification failed: %v", err)
-	}
+	err = loaded.Verify()
+	require.NoError(t, err, "Policy verification failed")
 
-	if loaded.RetentionDays != 30 {
-		t.Errorf("RetentionDays mismatch: got %d", loaded.RetentionDays)
-	}
-	if loaded.DeletionMode != policy.DeletionBothRequired {
-		t.Errorf("DeletionMode mismatch: got %s", loaded.DeletionMode)
-	}
+	assert.Equal(t, 30, loaded.RetentionDays, "RetentionDays mismatch")
+	assert.Equal(t, policy.DeletionBothRequired, loaded.DeletionMode, "DeletionMode mismatch")
 }
 
 // TestUpgrade_StorageDataIntact tests that backup data stored with
@@ -391,37 +320,23 @@ func TestUpgrade_StorageDataIntact(t *testing.T) {
 		BasePath:   tmpDir,
 		AppendOnly: true,
 	})
-	if err != nil {
-		t.Fatalf("Failed to create storage server: %v", err)
-	}
+	require.NoError(t, err, "Failed to create storage server")
 	s.Start()
 
 	// Verify data is accessible via new storage server
 	status := s.Status()
-	if !status.Running {
-		t.Error("Storage server should be running")
-	}
-	if status.UsedBytes == 0 {
-		t.Error("Should detect existing data")
-	}
+	assert.True(t, status.Running, "Storage server should be running")
+	assert.NotEqual(t, int64(0), status.UsedBytes, "Should detect existing data")
 
 	// Verify integrity check works on old data
 	checker, err := integrity.NewChecker(tmpDir)
-	if err != nil {
-		t.Fatalf("Failed to create integrity checker: %v", err)
-	}
+	require.NoError(t, err, "Failed to create integrity checker")
 
 	result, err := checker.CheckDataIntegrity("backup-repo")
-	if err != nil {
-		t.Fatalf("Integrity check failed: %v", err)
-	}
+	require.NoError(t, err, "Integrity check failed")
 
-	if !result.Passed {
-		t.Errorf("Integrity check should pass for valid old data: %v", result.Errors)
-	}
-	if result.TotalFiles != 1 {
-		t.Errorf("Should find 1 data file, got %d", result.TotalFiles)
-	}
+	assert.True(t, result.Passed, "Integrity check should pass for valid old data: %v", result.Errors)
+	assert.Equal(t, 1, result.TotalFiles, "Should find 1 data file")
 }
 
 // TestUpgrade_Ed25519KeysCompatible tests that Ed25519 keys generated
@@ -429,9 +344,7 @@ func TestUpgrade_StorageDataIntact(t *testing.T) {
 func TestUpgrade_Ed25519KeysCompatible(t *testing.T) {
 	// Generate keys with current code
 	pub, priv, err := crypto.GenerateKeyPair()
-	if err != nil {
-		t.Fatalf("Failed to generate keys: %v", err)
-	}
+	require.NoError(t, err, "Failed to generate keys")
 
 	// Encode to hex (as stored in config)
 	pubHex := crypto.EncodePublicKey(pub)
@@ -439,31 +352,21 @@ func TestUpgrade_Ed25519KeysCompatible(t *testing.T) {
 
 	// Decode back
 	decodedPub, err := crypto.DecodePublicKey(pubHex)
-	if err != nil {
-		t.Fatalf("Failed to decode public key: %v", err)
-	}
+	require.NoError(t, err, "Failed to decode public key")
 	decodedPriv, err := crypto.DecodePrivateKey(privHex)
-	if err != nil {
-		t.Fatalf("Failed to decode private key: %v", err)
-	}
+	require.NoError(t, err, "Failed to decode private key")
 
 	// Sign and verify
 	message := []byte("test message to sign")
 	sig, err := crypto.Sign(decodedPriv, message)
-	if err != nil {
-		t.Fatalf("Failed to sign: %v", err)
-	}
+	require.NoError(t, err, "Failed to sign")
 
-	if !crypto.Verify(decodedPub, message, sig) {
-		t.Error("Signature verification failed")
-	}
+	assert.True(t, crypto.Verify(decodedPub, message, sig), "Signature verification failed")
 
 	// Key ID should be deterministic
 	keyID1 := crypto.KeyID(pub)
 	keyID2 := crypto.KeyID(decodedPub)
-	if keyID1 != keyID2 {
-		t.Errorf("Key ID mismatch: %s vs %s", keyID1, keyID2)
-	}
+	assert.Equal(t, keyID1, keyID2, "Key ID mismatch")
 }
 
 // TestUpgrade_ConfigSavePreservesUnknownFields tests that saving a config
@@ -486,17 +389,14 @@ func TestUpgrade_ConfigSavePreservesUnknownFields(t *testing.T) {
 
 	// Load with current code
 	cfg, err := config.Load(tmpDir)
-	if err != nil {
-		t.Fatalf("Failed to load config with unknown fields: %v", err)
-	}
+	require.NoError(t, err, "Failed to load config with unknown fields")
 
 	// Modify a known field
 	cfg.Name = "modified-name"
 
 	// Save it back
-	if err := cfg.Save(); err != nil {
-		t.Fatalf("Failed to save config: %v", err)
-	}
+	err = cfg.Save()
+	require.NoError(t, err, "Failed to save config")
 
 	// Note: Current implementation will LOSE unknown fields on save
 	// This test documents that behavior - we may want to fix this
@@ -504,9 +404,7 @@ func TestUpgrade_ConfigSavePreservesUnknownFields(t *testing.T) {
 
 	// Re-load
 	reloaded, _ := config.Load(tmpDir)
-	if reloaded.Name != "modified-name" {
-		t.Error("Modified field should be saved")
-	}
+	assert.Equal(t, "modified-name", reloaded.Name, "Modified field should be saved")
 
 	// Check the raw JSON to see if unknown fields were preserved
 	rawData, _ := os.ReadFile(configPath)
@@ -538,39 +436,25 @@ func TestUpgrade_DeletionRequestsNewFeature(t *testing.T) {
 		"need to free space",
 		2,
 	)
-	if err != nil {
-		t.Fatalf("Failed to create deletion request: %v", err)
-	}
+	require.NoError(t, err, "Failed to create deletion request")
 
 	// Verify it was saved
 	loaded, err := mgr.GetDeletionRequest(del.ID)
-	if err != nil {
-		t.Fatalf("Failed to load deletion request: %v", err)
-	}
+	require.NoError(t, err, "Failed to load deletion request")
 
-	if loaded.DeletionType != consent.DeletionTypeSnapshot {
-		t.Errorf("DeletionType mismatch: got %s", loaded.DeletionType)
-	}
-	if len(loaded.SnapshotIDs) != 2 {
-		t.Errorf("SnapshotIDs mismatch: got %d", len(loaded.SnapshotIDs))
-	}
+	assert.Equal(t, consent.DeletionTypeSnapshot, loaded.DeletionType, "DeletionType mismatch")
+	assert.Len(t, loaded.SnapshotIDs, 2, "SnapshotIDs mismatch")
 
 	// Ensure old restore requests still work alongside new deletion requests
 	restore, err := mgr.CreateRequest("alice", "latest", "need files", nil)
-	if err != nil {
-		t.Fatalf("Failed to create restore request: %v", err)
-	}
+	require.NoError(t, err, "Failed to create restore request")
 
 	// Both should be accessible
 	pendingRestores, _ := mgr.ListPending()
 	pendingDeletions, _ := mgr.ListPendingDeletions()
 
-	if len(pendingRestores) != 1 {
-		t.Errorf("Expected 1 pending restore, got %d", len(pendingRestores))
-	}
-	if len(pendingDeletions) != 1 {
-		t.Errorf("Expected 1 pending deletion, got %d", len(pendingDeletions))
-	}
+	assert.Len(t, pendingRestores, 1, "Expected 1 pending restore")
+	assert.Len(t, pendingDeletions, 1, "Expected 1 pending deletion")
 
 	_ = restore // silence unused warning
 }

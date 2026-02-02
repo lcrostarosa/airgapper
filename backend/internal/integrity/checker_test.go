@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/lcrostarosa/airgapper/backend/internal/crypto"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func setupTestRepo(t *testing.T, basePath, repoName string) {
@@ -15,9 +17,8 @@ func setupTestRepo(t *testing.T, basePath, repoName string) {
 	repoPath := filepath.Join(basePath, repoName)
 	dirs := []string{"data", "keys", "snapshots", "index", "locks"}
 	for _, dir := range dirs {
-		if err := os.MkdirAll(filepath.Join(repoPath, dir), 0755); err != nil {
-			t.Fatalf("failed to create dir %s: %v", dir, err)
-		}
+		err := os.MkdirAll(filepath.Join(repoPath, dir), 0755)
+		require.NoError(t, err, "failed to create dir %s", dir)
 	}
 
 	// Create config file
@@ -51,26 +52,14 @@ func TestCheckDataIntegrity(t *testing.T) {
 	setupTestRepo(t, tmpDir, "testrepo")
 
 	checker, err := NewChecker(tmpDir)
-	if err != nil {
-		t.Fatalf("failed to create checker: %v", err)
-	}
+	require.NoError(t, err, "failed to create checker")
 
 	result, err := checker.CheckDataIntegrity("testrepo")
-	if err != nil {
-		t.Fatalf("CheckDataIntegrity failed: %v", err)
-	}
+	require.NoError(t, err, "CheckDataIntegrity failed")
 
-	if !result.Passed {
-		t.Errorf("expected check to pass, got errors: %v", result.Errors)
-	}
-
-	if result.TotalFiles != 5 {
-		t.Errorf("expected 5 data files, got %d", result.TotalFiles)
-	}
-
-	if result.CorruptFiles != 0 {
-		t.Errorf("expected 0 corrupt files, got %d", result.CorruptFiles)
-	}
+	assert.True(t, result.Passed, "expected check to pass, got errors: %v", result.Errors)
+	assert.Equal(t, 5, result.TotalFiles, "expected 5 data files")
+	assert.Equal(t, 0, result.CorruptFiles, "expected 0 corrupt files")
 }
 
 func TestCheckDataIntegrity_CorruptFile(t *testing.T) {
@@ -93,13 +82,8 @@ func TestCheckDataIntegrity_CorruptFile(t *testing.T) {
 	checker, _ := NewChecker(tmpDir)
 	result, _ := checker.CheckDataIntegrity("testrepo")
 
-	if result.Passed {
-		t.Error("expected check to fail due to corruption")
-	}
-
-	if result.CorruptFiles == 0 {
-		t.Error("expected corrupt files to be detected")
-	}
+	assert.False(t, result.Passed, "expected check to fail due to corruption")
+	assert.NotEqual(t, 0, result.CorruptFiles, "expected corrupt files to be detected")
 }
 
 func TestCreateVerificationRecord(t *testing.T) {
@@ -109,29 +93,13 @@ func TestCreateVerificationRecord(t *testing.T) {
 	checker, _ := NewChecker(tmpDir)
 
 	record, err := checker.CreateVerificationRecord("testrepo", "snap123", "owner-key-123")
-	if err != nil {
-		t.Fatalf("CreateVerificationRecord failed: %v", err)
-	}
+	require.NoError(t, err, "CreateVerificationRecord failed")
 
-	if record.SnapshotID != "snap123" {
-		t.Errorf("expected snapshot ID snap123, got %s", record.SnapshotID)
-	}
-
-	if record.ConfigHash == "" {
-		t.Error("expected config hash to be set")
-	}
-
-	if record.SnapshotHash == "" {
-		t.Error("expected snapshot hash to be set")
-	}
-
-	if record.DataMerkleRoot == "" {
-		t.Error("expected data merkle root to be set")
-	}
-
-	if record.DataFileCount != 5 {
-		t.Errorf("expected 5 data files, got %d", record.DataFileCount)
-	}
+	assert.Equal(t, "snap123", record.SnapshotID, "expected snapshot ID snap123")
+	assert.NotEmpty(t, record.ConfigHash, "expected config hash to be set")
+	assert.NotEmpty(t, record.SnapshotHash, "expected snapshot hash to be set")
+	assert.NotEmpty(t, record.DataMerkleRoot, "expected data merkle root to be set")
+	assert.Equal(t, 5, record.DataFileCount, "expected 5 data files")
 }
 
 func TestSignedVerificationRecord(t *testing.T) {
@@ -154,19 +122,13 @@ func TestSignedVerificationRecord(t *testing.T) {
 
 	// Add to checker (should verify signature)
 	err := checker.AddVerificationRecord(record, pubKey)
-	if err != nil {
-		t.Fatalf("AddVerificationRecord failed: %v", err)
-	}
+	require.NoError(t, err, "AddVerificationRecord failed")
 
 	// Retrieve it
 	retrieved := checker.GetVerificationRecord("snap123")
-	if retrieved == nil {
-		t.Fatal("expected to retrieve record")
-	}
+	require.NotNil(t, retrieved, "expected to retrieve record")
 
-	if retrieved.ConfigHash != record.ConfigHash {
-		t.Error("config hash mismatch")
-	}
+	assert.Equal(t, record.ConfigHash, retrieved.ConfigHash, "config hash mismatch")
 }
 
 func TestSignedVerificationRecord_TamperedSignature(t *testing.T) {
@@ -190,9 +152,7 @@ func TestSignedVerificationRecord_TamperedSignature(t *testing.T) {
 
 	// Should fail verification
 	err := checker.AddVerificationRecord(record, pubKey)
-	if err == nil {
-		t.Error("expected verification to fail after tampering")
-	}
+	assert.Error(t, err, "expected verification to fail after tampering")
 }
 
 func TestVerifyAgainstRecord(t *testing.T) {
@@ -209,13 +169,9 @@ func TestVerifyAgainstRecord(t *testing.T) {
 
 	// Verify against record (should pass)
 	result, err := checker.VerifyAgainstRecord("testrepo", record)
-	if err != nil {
-		t.Fatalf("VerifyAgainstRecord failed: %v", err)
-	}
+	require.NoError(t, err, "VerifyAgainstRecord failed")
 
-	if !result.Passed {
-		t.Errorf("expected verification to pass, got errors: %v", result.Errors)
-	}
+	assert.True(t, result.Passed, "expected verification to pass, got errors: %v", result.Errors)
 }
 
 func TestVerifyAgainstRecord_MissingFiles(t *testing.T) {
@@ -240,13 +196,8 @@ func TestVerifyAgainstRecord_MissingFiles(t *testing.T) {
 	// Verify against record (should fail)
 	result, _ := checker.VerifyAgainstRecord("testrepo", record)
 
-	if result.Passed {
-		t.Error("expected verification to fail after deleting files")
-	}
-
-	if len(result.Errors) == 0 {
-		t.Error("expected errors to be reported")
-	}
+	assert.False(t, result.Passed, "expected verification to fail after deleting files")
+	assert.NotEmpty(t, result.Errors, "expected errors to be reported")
 }
 
 func TestCheckHistory(t *testing.T) {
@@ -261,15 +212,11 @@ func TestCheckHistory(t *testing.T) {
 	checker.CheckDataIntegrity("testrepo")
 
 	history := checker.GetHistory(10)
-	if len(history) != 3 {
-		t.Errorf("expected 3 history entries, got %d", len(history))
-	}
+	assert.Len(t, history, 3, "expected 3 history entries")
 
 	// All should pass
 	for _, h := range history {
-		if !h.Passed {
-			t.Error("expected all checks to pass")
-		}
+		assert.True(t, h.Passed, "expected all checks to pass")
 	}
 }
 
@@ -294,11 +241,7 @@ func TestRecordPersistence(t *testing.T) {
 	checker2, _ := NewChecker(tmpDir)
 
 	retrieved := checker2.GetVerificationRecord("snap123")
-	if retrieved == nil {
-		t.Fatal("expected record to be persisted and loaded")
-	}
+	require.NotNil(t, retrieved, "expected record to be persisted and loaded")
 
-	if retrieved.ConfigHash != record.ConfigHash {
-		t.Error("persisted record doesn't match")
-	}
+	assert.Equal(t, record.ConfigHash, retrieved.ConfigHash, "persisted record doesn't match")
 }

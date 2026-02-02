@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/lcrostarosa/airgapper/backend/internal/config"
 )
@@ -40,10 +42,7 @@ func TestInterceptorChainOrder(t *testing.T) {
 
 	cmd := &cobra.Command{}
 	err := runner.Wrap(handler)(cmd, nil)
-
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 
 	expected := []string{
 		"first-before",
@@ -55,14 +54,10 @@ func TestInterceptorChainOrder(t *testing.T) {
 		"first-after",
 	}
 
-	if len(order) != len(expected) {
-		t.Fatalf("expected %d calls, got %d: %v", len(expected), len(order), order)
-	}
+	require.Len(t, order, len(expected))
 
 	for i, exp := range expected {
-		if order[i] != exp {
-			t.Errorf("order[%d] = %q, want %q", i, order[i], exp)
-		}
+		assert.Equal(t, exp, order[i], "order[%d]", i)
 	}
 }
 
@@ -97,17 +92,10 @@ func TestInterceptorChainStopsOnError(t *testing.T) {
 	cmd := &cobra.Command{}
 	err := runner.Wrap(handler)(cmd, nil)
 
-	if !errors.Is(err, expectedErr) {
-		t.Errorf("expected error %v, got %v", expectedErr, err)
-	}
-
-	if len(order) != 2 {
-		t.Errorf("expected 2 calls, got %d: %v", len(order), order)
-	}
-
-	if order[0] != "first" || order[1] != "second-fails" {
-		t.Errorf("unexpected order: %v", order)
-	}
+	assert.ErrorIs(t, err, expectedErr)
+	assert.Len(t, order, 2)
+	assert.Equal(t, "first", order[0])
+	assert.Equal(t, "second-fails", order[1])
 }
 
 func TestRequireConfig(t *testing.T) {
@@ -158,27 +146,21 @@ func TestRequireConfig(t *testing.T) {
 			err := runner.Wrap(handler)(cmd, nil)
 
 			if tt.wantErr != nil {
-				if !errors.Is(err, tt.wantErr) {
-					t.Errorf("expected error %v, got %v", tt.wantErr, err)
-				}
+				assert.ErrorIs(t, err, tt.wantErr)
 			} else if tt.cfgErr != nil {
-				if err == nil {
-					t.Error("expected an error but got nil")
-				}
+				assert.Error(t, err)
 			}
 
-			if handlerCalled != tt.wantCalls {
-				t.Errorf("handler called = %v, want %v", handlerCalled, tt.wantCalls)
-			}
+			assert.Equal(t, tt.wantCalls, handlerCalled)
 		})
 	}
 }
 
 func TestRequireOwner(t *testing.T) {
 	tests := []struct {
-		name      string
-		role      config.Role
-		wantErr   bool
+		name        string
+		role        config.Role
+		wantErr     bool
 		errContains string
 	}{
 		{
@@ -209,13 +191,10 @@ func TestRequireOwner(t *testing.T) {
 			err := runner.Wrap(handler)(cmd, nil)
 
 			if tt.wantErr {
-				if err == nil {
-					t.Error("expected error but got nil")
-				} else if tt.errContains != "" && !errors.Is(err, ErrNotOwner) {
-					t.Errorf("expected error containing %q, got %v", tt.errContains, err)
-				}
-			} else if err != nil {
-				t.Errorf("unexpected error: %v", err)
+				assert.Error(t, err)
+				assert.ErrorIs(t, err, ErrNotOwner)
+			} else {
+				assert.NoError(t, err)
 			}
 		})
 	}
@@ -253,10 +232,10 @@ func TestRequireHost(t *testing.T) {
 			cmd := &cobra.Command{}
 			err := runner.Wrap(handler)(cmd, nil)
 
-			if tt.wantErr && err == nil {
-				t.Error("expected error but got nil")
-			} else if !tt.wantErr && err != nil {
-				t.Errorf("unexpected error: %v", err)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
 			}
 		})
 	}
@@ -295,11 +274,9 @@ func TestRequirePassword(t *testing.T) {
 			err := runner.Wrap(handler)(cmd, nil)
 
 			if tt.wantErr != nil {
-				if !errors.Is(err, tt.wantErr) {
-					t.Errorf("expected error %v, got %v", tt.wantErr, err)
-				}
-			} else if err != nil {
-				t.Errorf("unexpected error: %v", err)
+				assert.ErrorIs(t, err, tt.wantErr)
+			} else {
+				assert.NoError(t, err)
 			}
 		})
 	}
@@ -314,15 +291,11 @@ func TestContextLazyConsentManager(t *testing.T) {
 
 	// First call should initialize
 	mgr1 := ctx.Consent()
-	if mgr1 == nil {
-		t.Error("expected consent manager, got nil")
-	}
+	assert.NotNil(t, mgr1)
 
 	// Second call should return same instance
 	mgr2 := ctx.Consent()
-	if mgr1 != mgr2 {
-		t.Error("expected same consent manager instance")
-	}
+	assert.Same(t, mgr1, mgr2)
 }
 
 func TestContextNilConfig(t *testing.T) {
@@ -330,23 +303,13 @@ func TestContextNilConfig(t *testing.T) {
 
 	// Should return nil without panicking
 	mgr := ctx.Consent()
-	if mgr != nil {
-		t.Error("expected nil consent manager for nil config")
-	}
+	assert.Nil(t, mgr)
 
 	// Helper methods should be safe
-	if ctx.HasConfig() {
-		t.Error("expected HasConfig() to return false")
-	}
-	if ctx.IsOwner() {
-		t.Error("expected IsOwner() to return false")
-	}
-	if ctx.IsHost() {
-		t.Error("expected IsHost() to return false")
-	}
-	if ctx.HasPassword() {
-		t.Error("expected HasPassword() to return false")
-	}
+	assert.False(t, ctx.HasConfig())
+	assert.False(t, ctx.IsOwner())
+	assert.False(t, ctx.IsHost())
+	assert.False(t, ctx.HasPassword())
 }
 
 func TestRecordActivityInterceptor(t *testing.T) {
@@ -366,12 +329,7 @@ func TestRecordActivityInterceptor(t *testing.T) {
 
 		cmd := &cobra.Command{}
 		err := runner.Wrap(handler)(cmd, nil)
-
-		if err != nil {
-			t.Errorf("unexpected error: %v", err)
-		}
-		// RecordActivity calls cfg.RecordActivity() which updates LastActivity
-		// We can't easily verify this without mocking, but no error means success
+		assert.NoError(t, err)
 	})
 
 	t.Run("does not record on error", func(t *testing.T) {
@@ -383,10 +341,7 @@ func TestRecordActivityInterceptor(t *testing.T) {
 
 		cmd := &cobra.Command{}
 		err := runner.Wrap(handler)(cmd, nil)
-
-		if !errors.Is(err, expectedErr) {
-			t.Errorf("expected error %v, got %v", expectedErr, err)
-		}
+		assert.ErrorIs(t, err, expectedErr)
 	})
 }
 
@@ -420,10 +375,7 @@ func TestBuilderPatterns(t *testing.T) {
 
 			cmd := &cobra.Command{}
 			err := tt.runner.Wrap(handler)(cmd, nil)
-
-			if err != nil {
-				t.Errorf("unexpected error: %v", err)
-			}
+			assert.NoError(t, err)
 		})
 	}
 }
@@ -437,12 +389,8 @@ func TestRunnerClone(t *testing.T) {
 	cloned := original.Clone().Use(RequireOwner())
 
 	// Original should have 1 interceptor
-	if len(original.interceptors) != 1 {
-		t.Errorf("expected original to have 1 interceptor, got %d", len(original.interceptors))
-	}
+	assert.Len(t, original.interceptors, 1)
 
 	// Clone should have 2 interceptors
-	if len(cloned.interceptors) != 2 {
-		t.Errorf("expected clone to have 2 interceptors, got %d", len(cloned.interceptors))
-	}
+	assert.Len(t, cloned.interceptors, 2)
 }

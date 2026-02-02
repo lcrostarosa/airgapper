@@ -4,6 +4,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestSchedulerCallbacks_NilSafe(t *testing.T) {
@@ -55,21 +57,11 @@ func TestSchedulerCallbacks_InvokesCallbacks(t *testing.T) {
 	c.callOnRetryExhausted([]*BackupResult{})
 	c.callOnScheduleChange(&Schedule{}, &Schedule{})
 
-	if !startCalled {
-		t.Error("OnBackupStart not called")
-	}
-	if !successCalled {
-		t.Error("OnBackupSuccess not called")
-	}
-	if !failureCalled {
-		t.Error("OnBackupFailure not called")
-	}
-	if !exhaustedCalled {
-		t.Error("OnRetryExhausted not called")
-	}
-	if !changeCalled {
-		t.Error("OnScheduleChange not called")
-	}
+	assert.True(t, startCalled, "OnBackupStart not called")
+	assert.True(t, successCalled, "OnBackupSuccess not called")
+	assert.True(t, failureCalled, "OnBackupFailure not called")
+	assert.True(t, exhaustedCalled, "OnRetryExhausted not called")
+	assert.True(t, changeCalled, "OnScheduleChange not called")
 }
 
 func TestLoggingCallbacks(t *testing.T) {
@@ -94,9 +86,7 @@ func TestLoggingCallbacks(t *testing.T) {
 	c.OnRetryExhausted([]*BackupResult{{}, {}})
 	c.OnScheduleChange(&Schedule{Expression: "old"}, &Schedule{Expression: "new"})
 
-	if len(logs) != 5 {
-		t.Errorf("expected 5 log entries, got %d", len(logs))
-	}
+	assert.Len(t, logs, 5)
 }
 
 func TestChainCallbacks(t *testing.T) {
@@ -112,9 +102,8 @@ func TestChainCallbacks(t *testing.T) {
 	chained := ChainCallbacks(c1, c2)
 	chained.OnBackupStart(&BackupResult{})
 
-	if count1 != 1 || count2 != 1 {
-		t.Errorf("expected both callbacks called, got count1=%d count2=%d", count1, count2)
-	}
+	assert.Equal(t, 1, count1)
+	assert.Equal(t, 1, count2)
 }
 
 func TestDefaultCallbacks(t *testing.T) {

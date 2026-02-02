@@ -1,15 +1,15 @@
 package testutil
 
 import (
-	"bytes"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestGetTestSeed(t *testing.T) {
 	seed := GetTestSeed(t)
-	if seed == 0 {
-		t.Error("seed should not be zero")
-	}
+	assert.NotZero(t, seed, "seed should not be zero")
 }
 
 func TestHashData(t *testing.T) {
@@ -17,24 +17,18 @@ func TestHashData(t *testing.T) {
 	hash1 := HashData(data)
 	hash2 := HashData(data)
 
-	if hash1 != hash2 {
-		t.Error("same data should produce same hash")
-	}
+	assert.Equal(t, hash1, hash2, "same data should produce same hash")
 
 	differentData := []byte("different data")
 	hash3 := HashData(differentData)
-	if hash1 == hash3 {
-		t.Error("different data should produce different hash")
-	}
+	assert.NotEqual(t, hash1, hash3, "different data should produce different hash")
 }
 
 func TestHashHex(t *testing.T) {
 	data := []byte("test data")
 	hexHash := HashHex(data)
 
-	if len(hexHash) != 64 {
-		t.Errorf("SHA256 hex should be 64 chars, got %d", len(hexHash))
-	}
+	assert.Len(t, hexHash, 64, "SHA256 hex should be 64 chars")
 }
 
 func TestCompareHashes(t *testing.T) {
@@ -42,43 +36,26 @@ func TestCompareHashes(t *testing.T) {
 	hash1 := HashData(data)
 	hash2 := HashData(data)
 
-	if !CompareHashes(hash1, hash2) {
-		t.Error("identical hashes should compare equal")
-	}
+	assert.True(t, CompareHashes(hash1, hash2), "identical hashes should compare equal")
 
 	hash3 := HashData([]byte("other"))
-	if CompareHashes(hash1, hash3) {
-		t.Error("different hashes should not compare equal")
-	}
+	assert.False(t, CompareHashes(hash1, hash3), "different hashes should not compare equal")
 }
 
 func TestValidateHash(t *testing.T) {
 	data := []byte("test data")
 	hash := HashData(data)
 
-	if !ValidateHash(data, hash) {
-		t.Error("data should validate against its own hash")
-	}
-
-	if ValidateHash([]byte("wrong data"), hash) {
-		t.Error("wrong data should not validate")
-	}
+	assert.True(t, ValidateHash(data, hash), "data should validate against its own hash")
+	assert.False(t, ValidateHash([]byte("wrong data"), hash), "wrong data should not validate")
 }
 
 func TestPasswordFixture(t *testing.T) {
 	pf := NewPasswordFixture()
 
-	if len(pf.Raw) != 32 {
-		t.Errorf("expected 32 bytes, got %d", len(pf.Raw))
-	}
-
-	if len(pf.Hex) != 64 {
-		t.Errorf("expected 64 char hex, got %d", len(pf.Hex))
-	}
-
-	if !pf.ValidateHash(pf.Bytes()) {
-		t.Error("password should validate its own hash")
-	}
+	assert.Len(t, pf.Raw, 32)
+	assert.Len(t, pf.Hex, 64)
+	assert.True(t, pf.ValidateHash(pf.Bytes()), "password should validate its own hash")
 }
 
 func TestPasswordFixtureWithSeed(t *testing.T) {
@@ -86,42 +63,24 @@ func TestPasswordFixtureWithSeed(t *testing.T) {
 	pf1 := NewPasswordFixture(WithSeed(seed))
 	pf2 := NewPasswordFixture(WithSeed(seed))
 
-	if !bytes.Equal(pf1.Raw, pf2.Raw) {
-		t.Error("same seed should produce same password")
-	}
+	assert.Equal(t, pf1.Raw, pf2.Raw, "same seed should produce same password")
 }
 
 func TestDataFixture(t *testing.T) {
 	df := NewDataFixture(100)
 
-	if df.Size != 100 {
-		t.Errorf("expected size 100, got %d", df.Size)
-	}
-
-	if len(df.Data) != 100 {
-		t.Errorf("expected 100 bytes, got %d", len(df.Data))
-	}
-
-	if !df.ValidateHash(df.Data) {
-		t.Error("data should validate its own hash")
-	}
-
-	if !df.ValidateContent(df.Data) {
-		t.Error("data should match itself")
-	}
+	assert.Equal(t, 100, df.Size)
+	assert.Len(t, df.Data, 100)
+	assert.True(t, df.ValidateHash(df.Data), "data should validate its own hash")
+	assert.True(t, df.ValidateContent(df.Data), "data should match itself")
 }
 
 func TestDataFixtureFromBytes(t *testing.T) {
 	original := []byte("specific test content")
 	df := NewDataFixtureFromBytes(original)
 
-	if !bytes.Equal(df.Data, original) {
-		t.Error("data should match original")
-	}
-
-	if !df.ValidateHash(original) {
-		t.Error("should validate original data")
-	}
+	assert.Equal(t, original, df.Data, "data should match original")
+	assert.True(t, df.ValidateHash(original), "should validate original data")
 }
 
 func TestSSSFixture(t *testing.T) {
@@ -129,20 +88,13 @@ func TestSSSFixture(t *testing.T) {
 		WithRandomSecret(32).
 		WithThreshold(2, 2).
 		Build()
+	require.NoError(t, err, "build failed")
 
-	if err != nil {
-		t.Fatalf("build failed: %v", err)
-	}
-
-	if len(sss.Shares) != 2 {
-		t.Errorf("expected 2 shares, got %d", len(sss.Shares))
-	}
+	assert.Len(t, sss.Shares, 2)
 
 	// Test reconstruction
 	err = sss.ValidateReconstruction(0, 1)
-	if err != nil {
-		t.Errorf("reconstruction failed: %v", err)
-	}
+	assert.NoError(t, err, "reconstruction failed")
 }
 
 func TestSSSFixtureThresholdSchemes(t *testing.T) {
@@ -160,22 +112,15 @@ func TestSSSFixtureThresholdSchemes(t *testing.T) {
 				WithRandomSecret(32).
 				WithThreshold(scheme.k, scheme.n).
 				Build()
+			require.NoError(t, err, "build failed for %d-of-%d", scheme.k, scheme.n)
 
-			if err != nil {
-				t.Fatalf("build failed for %d-of-%d: %v", scheme.k, scheme.n, err)
-			}
-
-			if len(sss.Shares) != scheme.n {
-				t.Errorf("expected %d shares, got %d", scheme.n, len(sss.Shares))
-			}
+			assert.Len(t, sss.Shares, scheme.n)
 
 			// Test all valid combinations
 			combos := sss.AllCombinations()
 			for _, combo := range combos {
 				err := sss.ValidateReconstruction(combo...)
-				if err != nil {
-					t.Errorf("reconstruction failed for combo %v: %v", combo, err)
-				}
+				assert.NoError(t, err, "reconstruction failed for combo %v", combo)
 			}
 		})
 	}
@@ -189,85 +134,54 @@ func TestSSSFixtureTamperedShare(t *testing.T) {
 
 	// Reconstruct with tampered share
 	reconstructed, err := sss.CombineWithTamperedShare(0, 1)
-	if err != nil {
-		t.Fatalf("combine failed: %v", err)
-	}
+	require.NoError(t, err, "combine failed")
 
 	// Hash should NOT match
 	if sss.ValidateReconstruction(0, 1) == nil {
 		// The tampered version should be different
-		if bytes.Equal(reconstructed, sss.Secret) {
-			t.Error("tampered reconstruction should differ from original")
-		}
+		assert.NotEqual(t, sss.Secret, reconstructed, "tampered reconstruction should differ from original")
 	}
 }
 
 func TestCryptoKeyFixture(t *testing.T) {
 	key, err := NewCryptoKeyFixture("alice")
-	if err != nil {
-		t.Fatalf("failed to create key: %v", err)
-	}
+	require.NoError(t, err, "failed to create key")
 
-	if key.Name != "alice" {
-		t.Errorf("expected name 'alice', got %s", key.Name)
-	}
-
-	if key.KeyID == "" {
-		t.Error("KeyID should not be empty")
-	}
+	assert.Equal(t, "alice", key.Name)
+	assert.NotEmpty(t, key.KeyID)
 
 	// Test sign/verify
 	message := []byte("test message")
 	sig, err := key.Sign(message)
-	if err != nil {
-		t.Fatalf("sign failed: %v", err)
-	}
+	require.NoError(t, err, "sign failed")
 
-	if !key.Verify(message, sig) {
-		t.Error("verification should succeed")
-	}
-
-	if key.Verify([]byte("different message"), sig) {
-		t.Error("verification should fail for different message")
-	}
+	assert.True(t, key.Verify(message, sig), "verification should succeed")
+	assert.False(t, key.Verify([]byte("different message"), sig), "verification should fail for different message")
 }
 
 func TestCryptoKeyFixtureRoundTrip(t *testing.T) {
 	key := MustNewCryptoKeyFixture("test")
 
 	err := key.EncodeDecodeRoundTrip()
-	if err != nil {
-		t.Errorf("round trip failed: %v", err)
-	}
+	assert.NoError(t, err, "round trip failed")
 }
 
 func TestKeyHoldersFixture(t *testing.T) {
 	kf, err := NewKeyHoldersFixture("alice", "bob", "charlie")
-	if err != nil {
-		t.Fatalf("failed to create key holders: %v", err)
-	}
+	require.NoError(t, err, "failed to create key holders")
 
-	if len(kf.Holders) != 3 {
-		t.Errorf("expected 3 holders, got %d", len(kf.Holders))
-	}
+	assert.Len(t, kf.Holders, 3)
 
 	alice := kf.Get("alice")
-	if alice == nil || alice.Name != "alice" {
-		t.Error("should be able to get alice by name")
-	}
+	require.NotNil(t, alice)
+	assert.Equal(t, "alice", alice.Name)
 
 	bob := kf.GetByIndex(1)
-	if bob == nil || bob.Name != "bob" {
-		t.Error("should be able to get bob by index")
-	}
+	require.NotNil(t, bob)
+	assert.Equal(t, "bob", bob.Name)
 
-	if len(kf.PublicKeys()) != 3 {
-		t.Error("should return 3 public keys")
-	}
-
-	if len(kf.KeyIDs()) != 3 {
-		t.Error("should return 3 key IDs")
-	}
+	assert.Len(t, kf.PublicKeys(), 3)
+	assert.Len(t, kf.KeyIDs(), 3)
 }
 
 func TestRestoreRequestFixture(t *testing.T) {
@@ -276,25 +190,17 @@ func TestRestoreRequestFixture(t *testing.T) {
 
 	// Sign the request
 	sig, err := req.Sign(key)
-	if err != nil {
-		t.Fatalf("sign failed: %v", err)
-	}
+	require.NoError(t, err, "sign failed")
 
 	// Verify
 	valid, err := req.Verify(key, sig)
-	if err != nil {
-		t.Fatalf("verify failed: %v", err)
-	}
-	if !valid {
-		t.Error("signature should be valid")
-	}
+	require.NoError(t, err, "verify failed")
+	assert.True(t, valid, "signature should be valid")
 
 	// Test tampered request - verification should fail
 	tamperedReq := req.WithTamperedReason("malicious reason")
 	valid, _ = tamperedReq.Verify(key, sig)
-	if valid {
-		t.Error("tampered request should fail verification")
-	}
+	assert.False(t, valid, "tampered request should fail verification")
 }
 
 func TestRepositoryFixture(t *testing.T) {
@@ -303,19 +209,12 @@ func TestRepositoryFixture(t *testing.T) {
 		WithDataFileCount(3).
 		MustBuild()
 
-	if repo.RepoName != "myrepo" {
-		t.Errorf("expected repo name 'myrepo', got %s", repo.RepoName)
-	}
-
-	if len(repo.DataFiles) != 3 {
-		t.Errorf("expected 3 data files, got %d", len(repo.DataFiles))
-	}
+	assert.Equal(t, "myrepo", repo.RepoName)
+	assert.Len(t, repo.DataFiles, 3)
 
 	// Test corruption
 	err := repo.CorruptDataFile(0)
-	if err != nil {
-		t.Errorf("corrupt failed: %v", err)
-	}
+	assert.NoError(t, err, "corrupt failed")
 }
 
 func TestConfigFixture(t *testing.T) {
@@ -326,13 +225,8 @@ func TestConfigFixture(t *testing.T) {
 		WithPassword("testpassword").
 		MustBuild()
 
-	if cfg.Config.Name != "test-owner" {
-		t.Errorf("expected name 'test-owner', got %s", cfg.Config.Name)
-	}
-
-	if !cfg.Config.IsOwner() {
-		t.Error("should be owner")
-	}
+	assert.Equal(t, "test-owner", cfg.Config.Name)
+	assert.True(t, cfg.Config.IsOwner())
 }
 
 func TestConfigFixtureConsensus(t *testing.T) {
@@ -345,13 +239,8 @@ func TestConfigFixtureConsensus(t *testing.T) {
 		WithKeyHolders(holders.Holders...).
 		MustBuild()
 
-	if !cfg.Config.UsesConsensusMode() {
-		t.Error("should use consensus mode")
-	}
-
-	if cfg.Config.Consensus.Threshold != 2 {
-		t.Errorf("expected threshold 2, got %d", cfg.Config.Consensus.Threshold)
-	}
+	assert.True(t, cfg.Config.UsesConsensusMode())
+	assert.Equal(t, 2, cfg.Config.Consensus.Threshold)
 }
 
 func TestWorkflowFixture(t *testing.T) {
@@ -359,27 +248,15 @@ func TestWorkflowFixture(t *testing.T) {
 		With2of2SSS("alice", "bob").
 		MustBuild()
 
-	if wf.Owner.Name != "alice" {
-		t.Errorf("expected owner 'alice', got %s", wf.Owner.Name)
-	}
-
-	if len(wf.Hosts) != 1 || wf.Hosts[0].Name != "bob" {
-		t.Error("expected host 'bob'")
-	}
-
-	if wf.SSS == nil {
-		t.Error("SSS fixture should be created")
-	}
+	assert.Equal(t, "alice", wf.Owner.Name)
+	require.Len(t, wf.Hosts, 1)
+	assert.Equal(t, "bob", wf.Hosts[0].Name)
+	assert.NotNil(t, wf.SSS)
 
 	// Simulate restore
 	secret, err := wf.SimulateRestore()
-	if err != nil {
-		t.Fatalf("restore simulation failed: %v", err)
-	}
-
-	if !bytes.Equal(secret, wf.SSS.Secret) {
-		t.Error("restored secret should match original")
-	}
+	require.NoError(t, err, "restore simulation failed")
+	assert.Equal(t, wf.SSS.Secret, secret, "restored secret should match original")
 }
 
 func TestWorkflowFixtureConsensus(t *testing.T) {
@@ -387,37 +264,19 @@ func TestWorkflowFixtureConsensus(t *testing.T) {
 		WithConsensus(2, "alice", "bob", "charlie").
 		MustBuild()
 
-	if wf.SSS != nil {
-		t.Error("SSS should be nil in consensus mode")
-	}
-
-	if wf.Threshold != 2 {
-		t.Errorf("expected threshold 2, got %d", wf.Threshold)
-	}
-
-	if wf.TotalParties != 3 {
-		t.Errorf("expected 3 parties, got %d", wf.TotalParties)
-	}
+	assert.Nil(t, wf.SSS, "SSS should be nil in consensus mode")
+	assert.Equal(t, 2, wf.Threshold)
+	assert.Equal(t, 3, wf.TotalParties)
 
 	// Simulate consensus approval
 	sigs, err := wf.SimulateConsensusApproval()
-	if err != nil {
-		t.Fatalf("consensus simulation failed: %v", err)
-	}
-
-	if len(sigs) != 2 {
-		t.Errorf("expected 2 signatures, got %d", len(sigs))
-	}
+	require.NoError(t, err, "consensus simulation failed")
+	assert.Len(t, sigs, 2)
 
 	// Verify signatures
 	validCount, err := wf.VerifySignatures(sigs)
-	if err != nil {
-		t.Fatalf("verification failed: %v", err)
-	}
-
-	if validCount != 2 {
-		t.Errorf("expected 2 valid signatures, got %d", validCount)
-	}
+	require.NoError(t, err, "verification failed")
+	assert.Equal(t, 2, validCount)
 }
 
 func TestCombinations(t *testing.T) {
@@ -425,19 +284,14 @@ func TestCombinations(t *testing.T) {
 	combos := combinations(3, 2)
 	expected := [][]int{{0, 1}, {0, 2}, {1, 2}}
 
-	if len(combos) != len(expected) {
-		t.Fatalf("expected %d combinations, got %d", len(expected), len(combos))
-	}
+	require.Len(t, combos, len(expected))
 
 	for i, combo := range combos {
-		if combo[0] != expected[i][0] || combo[1] != expected[i][1] {
-			t.Errorf("combination %d: expected %v, got %v", i, expected[i], combo)
-		}
+		assert.Equal(t, expected[i][0], combo[0], "combination %d", i)
+		assert.Equal(t, expected[i][1], combo[1], "combination %d", i)
 	}
 
 	// Test 3-of-5
 	combos = combinations(5, 3)
-	if len(combos) != 10 { // C(5,3) = 10
-		t.Errorf("expected 10 combinations for 3-of-5, got %d", len(combos))
-	}
+	assert.Len(t, combos, 10, "C(5,3) = 10")
 }

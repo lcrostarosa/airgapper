@@ -1,8 +1,10 @@
 package consent
 
 import (
-	"os"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRestoreRequest(t *testing.T) {
@@ -11,49 +13,29 @@ func TestRestoreRequest(t *testing.T) {
 
 	// Create request
 	req, err := m.CreateRequest("alice", "latest", "need to restore files", nil)
-	if err != nil {
-		t.Fatalf("CreateRequest failed: %v", err)
-	}
+	require.NoError(t, err, "CreateRequest failed")
 
-	if req.ID == "" {
-		t.Error("Request should have an ID")
-	}
-	if req.Status != StatusPending {
-		t.Errorf("Expected status pending, got %s", req.Status)
-	}
+	assert.NotEmpty(t, req.ID, "Request should have an ID")
+	assert.Equal(t, StatusPending, req.Status)
 
 	// Get request
 	got, err := m.GetRequest(req.ID)
-	if err != nil {
-		t.Fatalf("GetRequest failed: %v", err)
-	}
-	if got.Requester != "alice" {
-		t.Errorf("Expected requester alice, got %s", got.Requester)
-	}
+	require.NoError(t, err, "GetRequest failed")
+	assert.Equal(t, "alice", got.Requester)
 
 	// List pending
 	pending, err := m.ListPending()
-	if err != nil {
-		t.Fatalf("ListPending failed: %v", err)
-	}
-	if len(pending) != 1 {
-		t.Errorf("Expected 1 pending request, got %d", len(pending))
-	}
+	require.NoError(t, err, "ListPending failed")
+	assert.Len(t, pending, 1)
 
 	// Approve
 	shareData := []byte("secret share")
-	if err := m.Approve(req.ID, "bob", shareData); err != nil {
-		t.Fatalf("Approve failed: %v", err)
-	}
+	require.NoError(t, m.Approve(req.ID, "bob", shareData), "Approve failed")
 
 	// Verify approved
 	got, _ = m.GetRequest(req.ID)
-	if got.Status != StatusApproved {
-		t.Errorf("Expected status approved, got %s", got.Status)
-	}
-	if string(got.ShareData) != "secret share" {
-		t.Error("Share data mismatch")
-	}
+	assert.Equal(t, StatusApproved, got.Status)
+	assert.Equal(t, "secret share", string(got.ShareData))
 }
 
 func TestRestoreRequestDeny(t *testing.T) {
@@ -62,14 +44,10 @@ func TestRestoreRequestDeny(t *testing.T) {
 
 	req, _ := m.CreateRequest("alice", "latest", "need files", nil)
 
-	if err := m.Deny(req.ID, "bob"); err != nil {
-		t.Fatalf("Deny failed: %v", err)
-	}
+	require.NoError(t, m.Deny(req.ID, "bob"), "Deny failed")
 
 	got, _ := m.GetRequest(req.ID)
-	if got.Status != StatusDenied {
-		t.Errorf("Expected status denied, got %s", got.Status)
-	}
+	assert.Equal(t, StatusDenied, got.Status)
 }
 
 func TestDeletionRequest(t *testing.T) {
@@ -85,67 +63,40 @@ func TestDeletionRequest(t *testing.T) {
 		"need to free space",
 		2, // Require 2 approvals
 	)
-	if err != nil {
-		t.Fatalf("CreateDeletionRequest failed: %v", err)
-	}
+	require.NoError(t, err, "CreateDeletionRequest failed")
 
-	if req.ID == "" {
-		t.Error("Request should have an ID")
-	}
-	if req.Status != StatusPending {
-		t.Errorf("Expected status pending, got %s", req.Status)
-	}
-	if req.DeletionType != DeletionTypeSnapshot {
-		t.Errorf("Expected type snapshot, got %s", req.DeletionType)
-	}
+	assert.NotEmpty(t, req.ID)
+	assert.Equal(t, StatusPending, req.Status)
+	assert.Equal(t, DeletionTypeSnapshot, req.DeletionType)
 
 	// Get request
 	got, err := m.GetDeletionRequest(req.ID)
-	if err != nil {
-		t.Fatalf("GetDeletionRequest failed: %v", err)
-	}
-	if len(got.SnapshotIDs) != 2 {
-		t.Errorf("Expected 2 snapshot IDs, got %d", len(got.SnapshotIDs))
-	}
+	require.NoError(t, err, "GetDeletionRequest failed")
+	assert.Len(t, got.SnapshotIDs, 2)
 
 	// List pending
 	pending, err := m.ListPendingDeletions()
-	if err != nil {
-		t.Fatalf("ListPendingDeletions failed: %v", err)
-	}
-	if len(pending) != 1 {
-		t.Errorf("Expected 1 pending deletion, got %d", len(pending))
-	}
+	require.NoError(t, err, "ListPendingDeletions failed")
+	assert.Len(t, pending, 1)
 
 	// First approval - not enough yet
 	sig1 := []byte("signature1")
-	if err := m.ApproveDeletion(req.ID, "alice-key", "Alice", sig1); err != nil {
-		t.Fatalf("First approval failed: %v", err)
-	}
+	require.NoError(t, m.ApproveDeletion(req.ID, "alice-key", "Alice", sig1), "First approval failed")
 
 	current, required, _ := m.GetDeletionApprovalProgress(req.ID)
-	if current != 1 || required != 2 {
-		t.Errorf("Expected 1/2 approvals, got %d/%d", current, required)
-	}
+	assert.Equal(t, 1, current)
+	assert.Equal(t, 2, required)
 
 	got, _ = m.GetDeletionRequest(req.ID)
-	if got.Status != StatusPending {
-		t.Errorf("Should still be pending with 1/2 approvals, got %s", got.Status)
-	}
+	assert.Equal(t, StatusPending, got.Status, "Should still be pending with 1/2 approvals")
 
 	// Second approval - should approve
 	sig2 := []byte("signature2")
-	if err := m.ApproveDeletion(req.ID, "bob-key", "Bob", sig2); err != nil {
-		t.Fatalf("Second approval failed: %v", err)
-	}
+	require.NoError(t, m.ApproveDeletion(req.ID, "bob-key", "Bob", sig2), "Second approval failed")
 
 	got, _ = m.GetDeletionRequest(req.ID)
-	if got.Status != StatusApproved {
-		t.Errorf("Should be approved with 2/2 approvals, got %s", got.Status)
-	}
-	if len(got.Approvals) != 2 {
-		t.Errorf("Expected 2 approvals, got %d", len(got.Approvals))
-	}
+	assert.Equal(t, StatusApproved, got.Status, "Should be approved with 2/2 approvals")
+	assert.Len(t, got.Approvals, 2)
 }
 
 func TestDeletionRequestDeny(t *testing.T) {
@@ -161,14 +112,10 @@ func TestDeletionRequestDeny(t *testing.T) {
 		1,
 	)
 
-	if err := m.DenyDeletion(req.ID, "bob"); err != nil {
-		t.Fatalf("DenyDeletion failed: %v", err)
-	}
+	require.NoError(t, m.DenyDeletion(req.ID, "bob"), "DenyDeletion failed")
 
 	got, _ := m.GetDeletionRequest(req.ID)
-	if got.Status != StatusDenied {
-		t.Errorf("Expected status denied, got %s", got.Status)
-	}
+	assert.Equal(t, StatusDenied, got.Status)
 }
 
 func TestDeletionDuplicateApproval(t *testing.T) {
@@ -189,9 +136,7 @@ func TestDeletionDuplicateApproval(t *testing.T) {
 
 	// Duplicate approval should fail
 	err := m.ApproveDeletion(req.ID, "alice-key", "Alice", []byte("sig2"))
-	if err == nil {
-		t.Error("Duplicate approval should fail")
-	}
+	assert.Error(t, err, "Duplicate approval should fail")
 }
 
 func TestMarkDeletionExecuted(t *testing.T) {
@@ -209,22 +154,16 @@ func TestMarkDeletionExecuted(t *testing.T) {
 
 	// Can't mark as executed before approval
 	err := m.MarkDeletionExecuted(req.ID)
-	if err == nil {
-		t.Error("Should not be able to mark unapproved deletion as executed")
-	}
+	assert.Error(t, err, "Should not be able to mark unapproved deletion as executed")
 
 	// Approve
 	m.ApproveDeletion(req.ID, "alice-key", "Alice", []byte("sig"))
 
 	// Now can mark as executed
-	if err := m.MarkDeletionExecuted(req.ID); err != nil {
-		t.Fatalf("MarkDeletionExecuted failed: %v", err)
-	}
+	require.NoError(t, m.MarkDeletionExecuted(req.ID), "MarkDeletionExecuted failed")
 
 	got, _ := m.GetDeletionRequest(req.ID)
-	if got.ExecutedAt == nil {
-		t.Error("ExecutedAt should be set")
-	}
+	assert.NotNil(t, got.ExecutedAt, "ExecutedAt should be set")
 }
 
 func TestDeletionPersistence(t *testing.T) {
@@ -244,14 +183,6 @@ func TestDeletionPersistence(t *testing.T) {
 	// Load with another manager
 	m2 := NewManager(tmpDir)
 	got, err := m2.GetDeletionRequest(req.ID)
-	if err != nil {
-		t.Fatalf("GetDeletionRequest failed: %v", err)
-	}
-
-	if got.DeletionType != DeletionTypeAll {
-		t.Errorf("DeletionType mismatch: got %s", got.DeletionType)
-	}
+	require.NoError(t, err, "GetDeletionRequest failed")
+	assert.Equal(t, DeletionTypeAll, got.DeletionType)
 }
-
-// Silence unused warning
-var _ = os.TempDir

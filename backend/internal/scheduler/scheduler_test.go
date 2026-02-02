@@ -3,6 +3,9 @@ package scheduler
 import (
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseSchedule(t *testing.T) {
@@ -20,16 +23,18 @@ func TestParseSchedule(t *testing.T) {
 		{"cron midnight", "0 0 * * *", false},
 		{"cron 2am", "0 2 * * *", false},
 		{"cron specific", "30 14 1 * *", false},
-		{"invalid cron", "60 2 * * *", true},      // minute > 59
-		{"invalid interval", "every 30s", true},   // too short
+		{"invalid cron", "60 2 * * *", true},    // minute > 59
+		{"invalid interval", "every 30s", true}, // too short
 		{"invalid format", "sometimes", true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := ParseSchedule(tt.expr)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("ParseSchedule(%q) error = %v, wantErr %v", tt.expr, err, tt.wantErr)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
 			}
 		})
 	}
@@ -71,17 +76,12 @@ func TestScheduleNextRun(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			sched, err := ParseSchedule(tt.expr)
-			if err != nil {
-				t.Fatalf("ParseSchedule failed: %v", err)
-			}
+			require.NoError(t, err, "ParseSchedule failed")
 
 			next := sched.NextRun(tt.after)
-			if next.Hour() != tt.wantHour || next.Minute() != tt.wantMin {
-				t.Errorf("NextRun = %s, want hour=%d min=%d", next.Format("15:04"), tt.wantHour, tt.wantMin)
-			}
-			if !next.After(tt.after) {
-				t.Errorf("NextRun %s should be after %s", next, tt.after)
-			}
+			assert.Equal(t, tt.wantHour, next.Hour())
+			assert.Equal(t, tt.wantMin, next.Minute())
+			assert.True(t, next.After(tt.after), "NextRun %s should be after %s", next, tt.after)
 		})
 	}
 }
@@ -90,15 +90,11 @@ func TestScheduleInterval(t *testing.T) {
 	now := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
 
 	sched, err := ParseSchedule("every 4h")
-	if err != nil {
-		t.Fatalf("ParseSchedule failed: %v", err)
-	}
+	require.NoError(t, err, "ParseSchedule failed")
 
 	next := sched.NextRun(now)
 	expected := now.Add(4 * time.Hour)
-	if !next.Equal(expected) {
-		t.Errorf("NextRun = %s, want %s", next, expected)
-	}
+	assert.True(t, next.Equal(expected), "NextRun = %s, want %s", next, expected)
 }
 
 func TestSchedulerBackupCalled(t *testing.T) {
@@ -141,9 +137,7 @@ func TestSchedulerStop(t *testing.T) {
 	countAtStop := callCount
 	time.Sleep(150 * time.Millisecond) // Wait more
 
-	if callCount != countAtStop {
-		t.Errorf("Scheduler continued after Stop: count went from %d to %d", countAtStop, callCount)
-	}
+	assert.Equal(t, countAtStop, callCount, "Scheduler continued after Stop")
 }
 
 func TestSchedulerStatus(t *testing.T) {
@@ -156,27 +150,17 @@ func TestSchedulerStatus(t *testing.T) {
 
 	// Before start
 	lastRun, lastErr, nextRun := s.Status()
-	if !lastRun.IsZero() {
-		t.Error("lastRun should be zero before any run")
-	}
-	if lastErr != nil {
-		t.Error("lastErr should be nil before any run")
-	}
-	if !nextRun.IsZero() {
-		t.Error("nextRun should be zero when not running")
-	}
+	assert.True(t, lastRun.IsZero(), "lastRun should be zero before any run")
+	assert.Nil(t, lastErr, "lastErr should be nil before any run")
+	assert.True(t, nextRun.IsZero(), "nextRun should be zero when not running")
 
 	s.Start()
 	time.Sleep(100 * time.Millisecond) // Let it run
 	s.Stop()
 
 	lastRun, lastErr, _ = s.Status()
-	if lastRun.IsZero() {
-		t.Error("lastRun should be set after run")
-	}
-	if lastErr != nil {
-		t.Error("lastErr should be nil after successful run")
-	}
+	assert.False(t, lastRun.IsZero(), "lastRun should be set after run")
+	assert.Nil(t, lastErr, "lastErr should be nil after successful run")
 }
 
 func TestFormatDuration(t *testing.T) {
@@ -192,10 +176,7 @@ func TestFormatDuration(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.want, func(t *testing.T) {
-			got := FormatDuration(tt.d)
-			if got != tt.want {
-				t.Errorf("FormatDuration(%v) = %q, want %q", tt.d, got, tt.want)
-			}
+			assert.Equal(t, tt.want, FormatDuration(tt.d))
 		})
 	}
 }

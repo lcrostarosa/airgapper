@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"crypto/rand"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSplitAndCombine(t *testing.T) {
@@ -59,30 +62,18 @@ func TestSplitAndCombine(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			shares, err := Split(tt.secret, tt.k, tt.n)
-			if err != nil {
-				t.Fatalf("Split failed: %v", err)
-			}
-
-			if len(shares) != tt.n {
-				t.Errorf("Expected %d shares, got %d", tt.n, len(shares))
-			}
+			require.NoError(t, err, "Split failed")
+			assert.Len(t, shares, tt.n)
 
 			// Verify each share has correct length
 			for i, share := range shares {
-				if len(share.Data) != len(tt.secret) {
-					t.Errorf("Share %d has wrong length: %d vs %d", i, len(share.Data), len(tt.secret))
-				}
+				assert.Len(t, share.Data, len(tt.secret), "Share %d has wrong length", i)
 			}
 
 			// Combine with exactly k shares
 			result, err := Combine(shares[:tt.k])
-			if err != nil {
-				t.Fatalf("Combine failed: %v", err)
-			}
-
-			if !bytes.Equal(result, tt.secret) {
-				t.Errorf("Reconstructed secret doesn't match:\n  got:  %x\n  want: %x", result, tt.secret)
-			}
+			require.NoError(t, err, "Combine failed")
+			assert.Equal(t, tt.secret, result, "Reconstructed secret doesn't match")
 		})
 	}
 }
@@ -91,9 +82,7 @@ func TestCombineWithDifferentShareSubsets(t *testing.T) {
 	secret := []byte("test secret for subset verification")
 
 	shares, err := Split(secret, 2, 3)
-	if err != nil {
-		t.Fatalf("Split failed: %v", err)
-	}
+	require.NoError(t, err, "Split failed")
 
 	// Try all 2-share combinations
 	combinations := [][2]int{
@@ -105,14 +94,8 @@ func TestCombineWithDifferentShareSubsets(t *testing.T) {
 	for _, combo := range combinations {
 		subset := []Share{shares[combo[0]], shares[combo[1]]}
 		result, err := Combine(subset)
-		if err != nil {
-			t.Errorf("Combine with shares %v failed: %v", combo, err)
-			continue
-		}
-
-		if !bytes.Equal(result, secret) {
-			t.Errorf("Combine with shares %v gave wrong result", combo)
-		}
+		require.NoError(t, err, "Combine with shares %v failed", combo)
+		assert.Equal(t, secret, result, "Combine with shares %v gave wrong result", combo)
 	}
 }
 
@@ -120,19 +103,12 @@ func TestCombineWithMoreThanK(t *testing.T) {
 	secret := []byte("test with extra shares")
 
 	shares, err := Split(secret, 2, 3)
-	if err != nil {
-		t.Fatalf("Split failed: %v", err)
-	}
+	require.NoError(t, err, "Split failed")
 
 	// Combine with all 3 shares (more than k=2)
 	result, err := Combine(shares)
-	if err != nil {
-		t.Fatalf("Combine failed: %v", err)
-	}
-
-	if !bytes.Equal(result, secret) {
-		t.Errorf("Reconstructed secret doesn't match")
-	}
+	require.NoError(t, err, "Combine failed")
+	assert.Equal(t, secret, result, "Reconstructed secret doesn't match")
 }
 
 func TestSplitErrors(t *testing.T) {
@@ -164,9 +140,7 @@ func TestSplitErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := Split(tt.secret, tt.k, tt.n)
-			if err == nil {
-				t.Error("Expected error, got nil")
-			}
+			assert.Error(t, err, "Expected error, got nil")
 		})
 	}
 }
@@ -176,24 +150,14 @@ func TestSplit1ofN(t *testing.T) {
 	secret := []byte("test secret for 1-of-n")
 
 	shares, err := Split(secret, 1, 3)
-	if err != nil {
-		t.Fatalf("Split 1-of-3 failed: %v", err)
-	}
-
-	if len(shares) != 3 {
-		t.Errorf("Expected 3 shares, got %d", len(shares))
-	}
+	require.NoError(t, err, "Split 1-of-3 failed")
+	assert.Len(t, shares, 3)
 
 	// Any single share should recover the secret
 	for i, share := range shares {
 		result, err := Combine([]Share{share})
-		if err != nil {
-			t.Errorf("Combine single share %d failed: %v", i, err)
-			continue
-		}
-		if !bytes.Equal(result, secret) {
-			t.Errorf("Single share %d gave wrong result", i)
-		}
+		require.NoError(t, err, "Combine single share %d failed", i)
+		assert.Equal(t, secret, result, "Single share %d gave wrong result", i)
 	}
 }
 
@@ -201,9 +165,7 @@ func TestCombineErrors(t *testing.T) {
 	t.Run("no shares", func(t *testing.T) {
 		shares := []Share{}
 		_, err := Combine(shares)
-		if err == nil {
-			t.Error("Expected error for no shares")
-		}
+		assert.Error(t, err, "Expected error for no shares")
 	})
 
 	t.Run("mismatched lengths", func(t *testing.T) {
@@ -212,9 +174,7 @@ func TestCombineErrors(t *testing.T) {
 			{Index: 2, Data: []byte("longer data")},
 		}
 		_, err := Combine(shares)
-		if err == nil {
-			t.Error("Expected error for mismatched lengths")
-		}
+		assert.Error(t, err, "Expected error for mismatched lengths")
 	})
 }
 
@@ -224,59 +184,37 @@ func TestRandomSecrets(t *testing.T) {
 		rand.Read(secret)
 
 		shares, err := Split(secret, 2, 2)
-		if err != nil {
-			t.Fatalf("Split failed: %v", err)
-		}
+		require.NoError(t, err, "Split failed")
 
 		result, err := Combine(shares)
-		if err != nil {
-			t.Fatalf("Combine failed: %v", err)
-		}
-
-		if !bytes.Equal(result, secret) {
-			t.Errorf("Random test %d failed", i)
-		}
+		require.NoError(t, err, "Combine failed")
+		assert.Equal(t, secret, result, "Random test %d failed", i)
 	}
 }
 
 func TestGF256Operations(t *testing.T) {
 	// Test addition (XOR)
-	if gfAdd(0x53, 0xca) != 0x99 {
-		t.Error("GF add failed")
-	}
+	assert.Equal(t, byte(0x99), gfAdd(0x53, 0xca), "GF add failed")
 
 	// Test that a + a = 0
 	for i := 0; i < 256; i++ {
-		if gfAdd(byte(i), byte(i)) != 0 {
-			t.Errorf("GF add self failed for %d", i)
-		}
-	}
-
-	// Test multiplication
-	if gfMul(0x53, 0xca) != 0x01 {
-		// This specific test may not be accurate, let's test properties instead
+		assert.Equal(t, byte(0), gfAdd(byte(i), byte(i)), "GF add self failed for %d", i)
 	}
 
 	// Test that a * 1 = a
 	for i := 0; i < 256; i++ {
-		if gfMul(byte(i), 1) != byte(i) {
-			t.Errorf("GF mul by 1 failed for %d", i)
-		}
+		assert.Equal(t, byte(i), gfMul(byte(i), 1), "GF mul by 1 failed for %d", i)
 	}
 
 	// Test that a * 0 = 0
 	for i := 0; i < 256; i++ {
-		if gfMul(byte(i), 0) != 0 {
-			t.Errorf("GF mul by 0 failed for %d", i)
-		}
+		assert.Equal(t, byte(0), gfMul(byte(i), 0), "GF mul by 0 failed for %d", i)
 	}
 
 	// Test inverse: a * a^(-1) = 1 for a != 0
 	for i := 1; i < 256; i++ {
 		inv := gfInverse(byte(i))
-		if gfMul(byte(i), inv) != 1 {
-			t.Errorf("GF inverse failed for %d: %d * %d != 1", i, i, inv)
-		}
+		assert.Equal(t, byte(1), gfMul(byte(i), inv), "GF inverse failed for %d: %d * %d != 1", i, i, inv)
 	}
 }
 

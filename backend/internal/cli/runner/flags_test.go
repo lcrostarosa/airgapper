@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestFlagSetString(t *testing.T) {
@@ -14,12 +15,8 @@ func TestFlagSetString(t *testing.T) {
 	flags := Flags(cmd)
 	val := flags.String("name")
 
-	if val != "alice" {
-		t.Errorf("expected 'alice', got %q", val)
-	}
-	if flags.Err() != nil {
-		t.Errorf("unexpected error: %v", flags.Err())
-	}
+	assert.Equal(t, "alice", val)
+	assert.NoError(t, flags.Err())
 }
 
 func TestFlagSetInt(t *testing.T) {
@@ -30,12 +27,8 @@ func TestFlagSetInt(t *testing.T) {
 	flags := Flags(cmd)
 	val := flags.Int("count")
 
-	if val != 42 {
-		t.Errorf("expected 42, got %d", val)
-	}
-	if flags.Err() != nil {
-		t.Errorf("unexpected error: %v", flags.Err())
-	}
+	assert.Equal(t, 42, val)
+	assert.NoError(t, flags.Err())
 }
 
 func TestFlagSetBool(t *testing.T) {
@@ -46,12 +39,8 @@ func TestFlagSetBool(t *testing.T) {
 	flags := Flags(cmd)
 	val := flags.Bool("verbose")
 
-	if !val {
-		t.Error("expected true, got false")
-	}
-	if flags.Err() != nil {
-		t.Errorf("unexpected error: %v", flags.Err())
-	}
+	assert.True(t, val)
+	assert.NoError(t, flags.Err())
 }
 
 func TestFlagSetStringSlice(t *testing.T) {
@@ -62,15 +51,9 @@ func TestFlagSetStringSlice(t *testing.T) {
 	flags := Flags(cmd)
 	val := flags.StringSlice("items")
 
-	if len(val) != 3 {
-		t.Errorf("expected 3 items, got %d", len(val))
-	}
-	if val[0] != "a" || val[1] != "b" || val[2] != "c" {
-		t.Errorf("unexpected values: %v", val)
-	}
-	if flags.Err() != nil {
-		t.Errorf("unexpected error: %v", flags.Err())
-	}
+	assert.Len(t, val, 3)
+	assert.Equal(t, []string{"a", "b", "c"}, val)
+	assert.NoError(t, flags.Err())
 }
 
 func TestFlagSetChanged(t *testing.T) {
@@ -81,12 +64,8 @@ func TestFlagSetChanged(t *testing.T) {
 
 	flags := Flags(cmd)
 
-	if !flags.Changed("changed") {
-		t.Error("expected 'changed' to be changed")
-	}
-	if flags.Changed("unchanged") {
-		t.Error("expected 'unchanged' to not be changed")
-	}
+	assert.True(t, flags.Changed("changed"), "expected 'changed' to be changed")
+	assert.False(t, flags.Changed("unchanged"), "expected 'unchanged' to not be changed")
 }
 
 func TestFlagSetErrorAccumulation(t *testing.T) {
@@ -102,17 +81,11 @@ func TestFlagSetErrorAccumulation(t *testing.T) {
 
 	// Valid flag should still work
 	val := flags.String("valid")
-	if val != "default" {
-		t.Errorf("expected 'default', got %q", val)
-	}
+	assert.Equal(t, "default", val)
 
 	// Should have errors
-	if !flags.HasErrors() {
-		t.Error("expected HasErrors() to return true")
-	}
-	if flags.Err() == nil {
-		t.Error("expected Err() to return error")
-	}
+	assert.True(t, flags.HasErrors())
+	assert.Error(t, flags.Err())
 }
 
 func TestFlagSetNoErrors(t *testing.T) {
@@ -122,12 +95,8 @@ func TestFlagSetNoErrors(t *testing.T) {
 	flags := Flags(cmd)
 	_ = flags.String("name")
 
-	if flags.HasErrors() {
-		t.Error("expected HasErrors() to return false")
-	}
-	if flags.Err() != nil {
-		t.Errorf("expected Err() to return nil, got %v", flags.Err())
-	}
+	assert.False(t, flags.HasErrors())
+	assert.NoError(t, flags.Err())
 }
 
 func TestFlagSetInt64(t *testing.T) {
@@ -138,10 +107,6 @@ func TestFlagSetInt64(t *testing.T) {
 	flags := Flags(cmd)
 	val := flags.Int64("size")
 
-	if val != 9223372036854775807 {
-		t.Errorf("expected max int64, got %d", val)
-	}
-	if flags.Err() != nil {
-		t.Errorf("unexpected error: %v", flags.Err())
-	}
+	assert.Equal(t, int64(9223372036854775807), val)
+	assert.NoError(t, flags.Err())
 }

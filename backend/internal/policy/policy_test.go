@@ -4,6 +4,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/lcrostarosa/airgapper/backend/internal/crypto"
 )
 
@@ -20,27 +23,13 @@ func TestNewPolicy(t *testing.T) {
 		"Bob", hostKeyID, crypto.EncodePublicKey(hostPub),
 	)
 
-	if p.Version != 1 {
-		t.Errorf("expected version 1, got %d", p.Version)
-	}
-	if p.ID == "" {
-		t.Error("expected policy ID to be set")
-	}
-	if p.OwnerName != "Alice" {
-		t.Errorf("expected owner name Alice, got %s", p.OwnerName)
-	}
-	if p.HostName != "Bob" {
-		t.Errorf("expected host name Bob, got %s", p.HostName)
-	}
-	if p.RetentionDays != 30 {
-		t.Errorf("expected default retention 30 days, got %d", p.RetentionDays)
-	}
-	if p.DeletionMode != DeletionBothRequired {
-		t.Errorf("expected default deletion mode both-required, got %s", p.DeletionMode)
-	}
-	if !p.AppendOnlyLocked {
-		t.Error("expected append-only to be locked by default")
-	}
+	assert.Equal(t, 1, p.Version)
+	assert.NotEmpty(t, p.ID)
+	assert.Equal(t, "Alice", p.OwnerName)
+	assert.Equal(t, "Bob", p.HostName)
+	assert.Equal(t, 30, p.RetentionDays)
+	assert.Equal(t, DeletionBothRequired, p.DeletionMode)
+	assert.True(t, p.AppendOnlyLocked)
 }
 
 func TestPolicySignAndVerify(t *testing.T) {
@@ -54,43 +43,26 @@ func TestPolicySignAndVerify(t *testing.T) {
 	)
 
 	// Initially not signed
-	if p.IsFullySigned() {
-		t.Error("policy should not be fully signed initially")
-	}
+	assert.False(t, p.IsFullySigned(), "policy should not be fully signed initially")
 
 	// Owner signs
-	if err := p.SignAsOwner(ownerPriv); err != nil {
-		t.Fatalf("owner sign failed: %v", err)
-	}
-
-	if p.OwnerSignature == "" {
-		t.Error("owner signature should be set")
-	}
+	require.NoError(t, p.SignAsOwner(ownerPriv), "owner sign failed")
+	assert.NotEmpty(t, p.OwnerSignature, "owner signature should be set")
 
 	// Verify owner signature
-	if err := p.VerifyOwnerSignature(); err != nil {
-		t.Errorf("owner signature verification failed: %v", err)
-	}
+	assert.NoError(t, p.VerifyOwnerSignature(), "owner signature verification failed")
 
 	// Still not fully signed
-	if p.IsFullySigned() {
-		t.Error("policy should not be fully signed with only owner signature")
-	}
+	assert.False(t, p.IsFullySigned(), "policy should not be fully signed with only owner signature")
 
 	// Host signs
-	if err := p.SignAsHost(hostPriv); err != nil {
-		t.Fatalf("host sign failed: %v", err)
-	}
+	require.NoError(t, p.SignAsHost(hostPriv), "host sign failed")
 
 	// Now fully signed
-	if !p.IsFullySigned() {
-		t.Error("policy should be fully signed")
-	}
+	assert.True(t, p.IsFullySigned(), "policy should be fully signed")
 
 	// Verify both
-	if err := p.Verify(); err != nil {
-		t.Errorf("full verification failed: %v", err)
-	}
+	assert.NoError(t, p.Verify(), "full verification failed")
 }
 
 func TestPolicyTamperDetection(t *testing.T) {
@@ -108,17 +80,13 @@ func TestPolicyTamperDetection(t *testing.T) {
 	p.SignAsHost(hostPriv)
 
 	// Verify works
-	if err := p.Verify(); err != nil {
-		t.Fatalf("initial verification failed: %v", err)
-	}
+	require.NoError(t, p.Verify(), "initial verification failed")
 
 	// Tamper with retention
 	p.RetentionDays = 1
 
 	// Verification should fail
-	if err := p.Verify(); err == nil {
-		t.Error("verification should fail after tampering")
-	}
+	assert.Error(t, p.Verify(), "verification should fail after tampering")
 }
 
 func TestPolicyCanDelete(t *testing.T) {
@@ -181,9 +149,7 @@ func TestPolicyCanDelete(t *testing.T) {
 			fileCreated := time.Now().Add(-tt.fileAge)
 			allowed, _ := p.CanDelete(fileCreated)
 
-			if allowed != tt.wantAllowed {
-				t.Errorf("CanDelete() = %v, want %v", allowed, tt.wantAllowed)
-			}
+			assert.Equal(t, tt.wantAllowed, allowed)
 		})
 	}
 }
@@ -198,28 +164,20 @@ func TestPolicyIsActive(t *testing.T) {
 	)
 
 	// Should be active by default
-	if !p.IsActive() {
-		t.Error("new policy should be active")
-	}
+	assert.True(t, p.IsActive(), "new policy should be active")
 
 	// Set effective date in future
 	p.EffectiveAt = time.Now().Add(24 * time.Hour)
-	if p.IsActive() {
-		t.Error("policy should not be active before effective date")
-	}
+	assert.False(t, p.IsActive(), "policy should not be active before effective date")
 
 	// Set effective date in past, expiry in future
 	p.EffectiveAt = time.Now().Add(-24 * time.Hour)
 	p.ExpiresAt = time.Now().Add(24 * time.Hour)
-	if !p.IsActive() {
-		t.Error("policy should be active between effective and expiry")
-	}
+	assert.True(t, p.IsActive(), "policy should be active between effective and expiry")
 
 	// Set expiry in past
 	p.ExpiresAt = time.Now().Add(-1 * time.Hour)
-	if p.IsActive() {
-		t.Error("policy should not be active after expiry")
-	}
+	assert.False(t, p.IsActive(), "policy should not be active after expiry")
 }
 
 func TestPolicyJSON(t *testing.T) {
@@ -239,28 +197,15 @@ func TestPolicyJSON(t *testing.T) {
 
 	// Serialize
 	data, err := p.ToJSON()
-	if err != nil {
-		t.Fatalf("ToJSON failed: %v", err)
-	}
+	require.NoError(t, err, "ToJSON failed")
 
 	// Deserialize
 	p2, err := FromJSON(data)
-	if err != nil {
-		t.Fatalf("FromJSON failed: %v", err)
-	}
+	require.NoError(t, err, "FromJSON failed")
 
 	// Verify
-	if err := p2.Verify(); err != nil {
-		t.Errorf("verification after round-trip failed: %v", err)
-	}
-
-	if p2.Name != "Test Policy" {
-		t.Errorf("name mismatch: got %s", p2.Name)
-	}
-	if p2.RetentionDays != 90 {
-		t.Errorf("retention mismatch: got %d", p2.RetentionDays)
-	}
-	if p2.DeletionMode != DeletionOwnerOnly {
-		t.Errorf("deletion mode mismatch: got %s", p2.DeletionMode)
-	}
+	assert.NoError(t, p2.Verify(), "verification after round-trip failed")
+	assert.Equal(t, "Test Policy", p2.Name)
+	assert.Equal(t, 90, p2.RetentionDays)
+	assert.Equal(t, DeletionOwnerOnly, p2.DeletionMode)
 }

@@ -14,6 +14,8 @@ import (
 
 	"github.com/lcrostarosa/airgapper/backend/internal/crypto"
 	"github.com/lcrostarosa/airgapper/backend/internal/policy"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewServer(t *testing.T) {
@@ -44,13 +46,12 @@ func TestNewServer(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s, err := NewServer(tt.cfg)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("NewServer() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.wantErr {
+				assert.Error(t, err, "NewServer() should return error")
 				return
 			}
-			if !tt.wantErr && s == nil {
-				t.Error("NewServer() returned nil server")
-			}
+			require.NoError(t, err, "NewServer() should not return error")
+			assert.NotNil(t, s, "NewServer() returned nil server")
 		})
 	}
 }
@@ -61,9 +62,7 @@ func TestStorageServer_RepoOperations(t *testing.T) {
 		BasePath:   tmpDir,
 		AppendOnly: true,
 	})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	require.NoError(t, err, "Failed to create server")
 	s.Start()
 	defer s.Stop()
 
@@ -75,16 +74,13 @@ func TestStorageServer_RepoOperations(t *testing.T) {
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)
 
-		if w.Code != http.StatusOK {
-			t.Errorf("Expected status 200, got %d", w.Code)
-		}
+		assert.Equal(t, http.StatusOK, w.Code, "Expected status 200")
 
 		// Verify directories were created
 		for _, dir := range []string{"data", "keys", "locks", "snapshots", "index"} {
 			path := filepath.Join(tmpDir, "testrepo", dir)
-			if _, err := os.Stat(path); os.IsNotExist(err) {
-				t.Errorf("Directory %s was not created", dir)
-			}
+			_, err := os.Stat(path)
+			assert.False(t, os.IsNotExist(err), "Directory %s was not created", dir)
 		}
 	})
 
@@ -94,9 +90,7 @@ func TestStorageServer_RepoOperations(t *testing.T) {
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)
 
-		if w.Code != http.StatusOK {
-			t.Errorf("Expected status 200, got %d", w.Code)
-		}
+		assert.Equal(t, http.StatusOK, w.Code, "Expected status 200")
 	})
 
 	t.Run("head repo not exists", func(t *testing.T) {
@@ -104,9 +98,7 @@ func TestStorageServer_RepoOperations(t *testing.T) {
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)
 
-		if w.Code != http.StatusNotFound {
-			t.Errorf("Expected status 404, got %d", w.Code)
-		}
+		assert.Equal(t, http.StatusNotFound, w.Code, "Expected status 404")
 	})
 }
 
@@ -116,9 +108,7 @@ func TestStorageServer_ConfigOperations(t *testing.T) {
 		BasePath:   tmpDir,
 		AppendOnly: true,
 	})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	require.NoError(t, err, "Failed to create server")
 	s.Start()
 
 	handler := s.Handler()
@@ -136,9 +126,7 @@ func TestStorageServer_ConfigOperations(t *testing.T) {
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)
 
-		if w.Code != http.StatusOK {
-			t.Errorf("Expected status 200, got %d: %s", w.Code, w.Body.String())
-		}
+		assert.Equal(t, http.StatusOK, w.Code, "Expected status 200: %s", w.Body.String())
 	})
 
 	// Test reading config
@@ -147,12 +135,8 @@ func TestStorageServer_ConfigOperations(t *testing.T) {
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)
 
-		if w.Code != http.StatusOK {
-			t.Errorf("Expected status 200, got %d", w.Code)
-		}
-		if !bytes.Equal(w.Body.Bytes(), configData) {
-			t.Errorf("Config data mismatch: got %s, want %s", w.Body.String(), string(configData))
-		}
+		assert.Equal(t, http.StatusOK, w.Code, "Expected status 200")
+		assert.True(t, bytes.Equal(w.Body.Bytes(), configData), "Config data mismatch: got %s, want %s", w.Body.String(), string(configData))
 	})
 
 	// Test config exists check
@@ -161,9 +145,7 @@ func TestStorageServer_ConfigOperations(t *testing.T) {
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)
 
-		if w.Code != http.StatusOK {
-			t.Errorf("Expected status 200, got %d", w.Code)
-		}
+		assert.Equal(t, http.StatusOK, w.Code, "Expected status 200")
 	})
 
 	// Test creating config again (should fail)
@@ -172,9 +154,7 @@ func TestStorageServer_ConfigOperations(t *testing.T) {
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)
 
-		if w.Code != http.StatusForbidden {
-			t.Errorf("Expected status 403, got %d", w.Code)
-		}
+		assert.Equal(t, http.StatusForbidden, w.Code, "Expected status 403")
 	})
 
 	// Test delete config in append-only mode (should fail)
@@ -183,9 +163,7 @@ func TestStorageServer_ConfigOperations(t *testing.T) {
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)
 
-		if w.Code != http.StatusForbidden {
-			t.Errorf("Expected status 403, got %d", w.Code)
-		}
+		assert.Equal(t, http.StatusForbidden, w.Code, "Expected status 403")
 	})
 }
 
@@ -195,9 +173,7 @@ func TestStorageServer_DataOperations(t *testing.T) {
 		BasePath:   tmpDir,
 		AppendOnly: true,
 	})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	require.NoError(t, err, "Failed to create server")
 	s.Start()
 
 	handler := s.Handler()
@@ -218,9 +194,7 @@ func TestStorageServer_DataOperations(t *testing.T) {
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)
 
-		if w.Code != http.StatusOK {
-			t.Errorf("Expected status 200, got %d: %s", w.Code, w.Body.String())
-		}
+		assert.Equal(t, http.StatusOK, w.Code, "Expected status 200: %s", w.Body.String())
 	})
 
 	// Test downloading data
@@ -229,12 +203,8 @@ func TestStorageServer_DataOperations(t *testing.T) {
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)
 
-		if w.Code != http.StatusOK {
-			t.Errorf("Expected status 200, got %d", w.Code)
-		}
-		if !bytes.Equal(w.Body.Bytes(), testData) {
-			t.Errorf("Data mismatch")
-		}
+		assert.Equal(t, http.StatusOK, w.Code, "Expected status 200")
+		assert.True(t, bytes.Equal(w.Body.Bytes(), testData), "Data mismatch")
 	})
 
 	// Test HEAD for data
@@ -243,9 +213,7 @@ func TestStorageServer_DataOperations(t *testing.T) {
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)
 
-		if w.Code != http.StatusOK {
-			t.Errorf("Expected status 200, got %d", w.Code)
-		}
+		assert.Equal(t, http.StatusOK, w.Code, "Expected status 200")
 	})
 
 	// Test listing data
@@ -254,13 +222,9 @@ func TestStorageServer_DataOperations(t *testing.T) {
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)
 
-		if w.Code != http.StatusOK {
-			t.Errorf("Expected status 200, got %d", w.Code)
-		}
+		assert.Equal(t, http.StatusOK, w.Code, "Expected status 200")
 		// Response should contain the file name
-		if !bytes.Contains(w.Body.Bytes(), []byte(hashHex)) {
-			t.Errorf("List should contain uploaded file: %s", w.Body.String())
-		}
+		assert.True(t, bytes.Contains(w.Body.Bytes(), []byte(hashHex)), "List should contain uploaded file: %s", w.Body.String())
 	})
 
 	// Test delete data in append-only mode (should fail)
@@ -269,9 +233,7 @@ func TestStorageServer_DataOperations(t *testing.T) {
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)
 
-		if w.Code != http.StatusForbidden {
-			t.Errorf("Expected status 403, got %d", w.Code)
-		}
+		assert.Equal(t, http.StatusForbidden, w.Code, "Expected status 403")
 	})
 
 	// Test uploading with wrong hash
@@ -281,9 +243,7 @@ func TestStorageServer_DataOperations(t *testing.T) {
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)
 
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("Expected status 400, got %d", w.Code)
-		}
+		assert.Equal(t, http.StatusBadRequest, w.Code, "Expected status 400")
 	})
 }
 
@@ -293,9 +253,7 @@ func TestStorageServer_KeysOperations(t *testing.T) {
 		BasePath:   tmpDir,
 		AppendOnly: true,
 	})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	require.NoError(t, err, "Failed to create server")
 	s.Start()
 
 	handler := s.Handler()
@@ -314,9 +272,7 @@ func TestStorageServer_KeysOperations(t *testing.T) {
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)
 
-		if w.Code != http.StatusOK {
-			t.Errorf("Expected status 200, got %d: %s", w.Code, w.Body.String())
-		}
+		assert.Equal(t, http.StatusOK, w.Code, "Expected status 200: %s", w.Body.String())
 	})
 
 	// Test downloading key
@@ -325,12 +281,8 @@ func TestStorageServer_KeysOperations(t *testing.T) {
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)
 
-		if w.Code != http.StatusOK {
-			t.Errorf("Expected status 200, got %d", w.Code)
-		}
-		if !bytes.Equal(w.Body.Bytes(), keyData) {
-			t.Errorf("Key data mismatch")
-		}
+		assert.Equal(t, http.StatusOK, w.Code, "Expected status 200")
+		assert.True(t, bytes.Equal(w.Body.Bytes(), keyData), "Key data mismatch")
 	})
 }
 
@@ -341,9 +293,7 @@ func TestStorageServer_Quota(t *testing.T) {
 		AppendOnly: true,
 		QuotaBytes: 100, // Very small quota for testing
 	})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	require.NoError(t, err, "Failed to create server")
 	s.Start()
 
 	handler := s.Handler()
@@ -367,9 +317,7 @@ func TestStorageServer_Quota(t *testing.T) {
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)
 
-		if w.Code != http.StatusInsufficientStorage {
-			t.Errorf("Expected status 507, got %d: %s", w.Code, w.Body.String())
-		}
+		assert.Equal(t, http.StatusInsufficientStorage, w.Code, "Expected status 507: %s", w.Body.String())
 	})
 
 	// Small data should work
@@ -380,9 +328,7 @@ func TestStorageServer_Quota(t *testing.T) {
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)
 
-		if w.Code != http.StatusOK {
-			t.Errorf("Expected status 200, got %d: %s", w.Code, w.Body.String())
-		}
+		assert.Equal(t, http.StatusOK, w.Code, "Expected status 200: %s", w.Body.String())
 	})
 
 	_ = hashHex // Silence unused warning
@@ -393,9 +339,7 @@ func TestStorageServer_NotRunning(t *testing.T) {
 	s, err := NewServer(Config{
 		BasePath: tmpDir,
 	})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	require.NoError(t, err, "Failed to create server")
 	// Don't start the server
 
 	handler := s.Handler()
@@ -404,9 +348,7 @@ func TestStorageServer_NotRunning(t *testing.T) {
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
-	if w.Code != http.StatusServiceUnavailable {
-		t.Errorf("Expected status 503, got %d", w.Code)
-	}
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code, "Expected status 503")
 }
 
 func TestStorageServer_DeleteWithoutAppendOnly(t *testing.T) {
@@ -415,9 +357,7 @@ func TestStorageServer_DeleteWithoutAppendOnly(t *testing.T) {
 		BasePath:   tmpDir,
 		AppendOnly: false, // Allow deletes
 	})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	require.NoError(t, err, "Failed to create server")
 	s.Start()
 
 	handler := s.Handler()
@@ -433,9 +373,7 @@ func TestStorageServer_DeleteWithoutAppendOnly(t *testing.T) {
 	w = httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("Failed to create key: %d", w.Code)
-	}
+	require.Equal(t, http.StatusOK, w.Code, "Failed to create key")
 
 	// Delete should work without append-only
 	t.Run("delete allowed without append-only", func(t *testing.T) {
@@ -443,9 +381,7 @@ func TestStorageServer_DeleteWithoutAppendOnly(t *testing.T) {
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)
 
-		if w.Code != http.StatusOK {
-			t.Errorf("Expected status 200, got %d", w.Code)
-		}
+		assert.Equal(t, http.StatusOK, w.Code, "Expected status 200")
 	})
 
 	// Verify file is gone
@@ -454,9 +390,7 @@ func TestStorageServer_DeleteWithoutAppendOnly(t *testing.T) {
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)
 
-		if w.Code != http.StatusNotFound {
-			t.Errorf("Expected status 404, got %d", w.Code)
-		}
+		assert.Equal(t, http.StatusNotFound, w.Code, "Expected status 404")
 	})
 }
 
@@ -466,9 +400,7 @@ func TestStorageServer_InvalidInputs(t *testing.T) {
 		BasePath:   tmpDir,
 		AppendOnly: true,
 	})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	require.NoError(t, err, "Failed to create server")
 	s.Start()
 
 	handler := s.Handler()
@@ -501,9 +433,7 @@ func TestStorageServer_InvalidInputs(t *testing.T) {
 			w := httptest.NewRecorder()
 			handler.ServeHTTP(w, req)
 
-			if w.Code != tt.wantStatus {
-				t.Errorf("Expected status %d, got %d", tt.wantStatus, w.Code)
-			}
+			assert.Equal(t, tt.wantStatus, w.Code, "Expected status %d", tt.wantStatus)
 		})
 	}
 }
@@ -515,32 +445,20 @@ func TestStorageServer_Status(t *testing.T) {
 		AppendOnly: true,
 		QuotaBytes: 1024,
 	})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	require.NoError(t, err, "Failed to create server")
 
 	// Before starting
 	status := s.Status()
-	if status.Running {
-		t.Error("Server should not be running before Start()")
-	}
+	assert.False(t, status.Running, "Server should not be running before Start()")
 
 	s.Start()
 
 	// After starting
 	status = s.Status()
-	if !status.Running {
-		t.Error("Server should be running after Start()")
-	}
-	if status.BasePath != tmpDir {
-		t.Errorf("BasePath mismatch: got %s, want %s", status.BasePath, tmpDir)
-	}
-	if !status.AppendOnly {
-		t.Error("AppendOnly should be true")
-	}
-	if status.QuotaBytes != 1024 {
-		t.Errorf("QuotaBytes mismatch: got %d, want 1024", status.QuotaBytes)
-	}
+	assert.True(t, status.Running, "Server should be running after Start()")
+	assert.Equal(t, tmpDir, status.BasePath, "BasePath mismatch")
+	assert.True(t, status.AppendOnly, "AppendOnly should be true")
+	assert.Equal(t, int64(1024), status.QuotaBytes, "QuotaBytes mismatch")
 
 	// Make a request to increment counter
 	handler := s.Handler()
@@ -549,17 +467,13 @@ func TestStorageServer_Status(t *testing.T) {
 	handler.ServeHTTP(w, req)
 
 	status = s.Status()
-	if status.RequestCount != 1 {
-		t.Errorf("RequestCount should be 1, got %d", status.RequestCount)
-	}
+	assert.Equal(t, int64(1), status.RequestCount, "RequestCount should be 1")
 
 	s.Stop()
 
 	// After stopping
 	status = s.Status()
-	if status.Running {
-		t.Error("Server should not be running after Stop()")
-	}
+	assert.False(t, status.Running, "Server should not be running after Stop()")
 }
 
 func TestIsValidRepoName(t *testing.T) {
@@ -582,9 +496,8 @@ func TestIsValidRepoName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := isValidRepoName(tt.input); got != tt.want {
-				t.Errorf("isValidRepoName(%q) = %v, want %v", tt.input, got, tt.want)
-			}
+			got := isValidRepoName(tt.input)
+			assert.Equal(t, tt.want, got, "isValidRepoName(%q)", tt.input)
 		})
 	}
 }
@@ -608,9 +521,8 @@ func TestIsValidFileName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := isValidFileName(tt.input); got != tt.want {
-				t.Errorf("isValidFileName(%q) = %v, want %v", tt.input, got, tt.want)
-			}
+			got := isValidFileName(tt.input)
+			assert.Equal(t, tt.want, got, "isValidFileName(%q)", tt.input)
 		})
 	}
 }
@@ -706,9 +618,7 @@ func TestStorageServer_PolicyEnforcement(t *testing.T) {
 		AppendOnly: false, // Allow deletes (policy will control)
 		Policy:     p,
 	})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	require.NoError(t, err, "Failed to create server")
 	s.Start()
 
 	handler := s.Handler()
@@ -724,9 +634,7 @@ func TestStorageServer_PolicyEnforcement(t *testing.T) {
 	w = httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("Failed to create key: %d", w.Code)
-	}
+	require.Equal(t, http.StatusOK, w.Code, "Failed to create key")
 
 	// Try to delete - should fail due to retention period
 	t.Run("delete blocked by retention period", func(t *testing.T) {
@@ -734,20 +642,14 @@ func TestStorageServer_PolicyEnforcement(t *testing.T) {
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)
 
-		if w.Code != http.StatusForbidden {
-			t.Errorf("Expected status 403, got %d: %s", w.Code, w.Body.String())
-		}
+		assert.Equal(t, http.StatusForbidden, w.Code, "Expected status 403: %s", w.Body.String())
 	})
 
 	// Verify status shows policy
 	t.Run("status shows policy", func(t *testing.T) {
 		status := s.Status()
-		if !status.HasPolicy {
-			t.Error("Status should show hasPolicy=true")
-		}
-		if status.PolicyID != p.ID {
-			t.Errorf("PolicyID mismatch: got %s, want %s", status.PolicyID, p.ID)
-		}
+		assert.True(t, status.HasPolicy, "Status should show hasPolicy=true")
+		assert.Equal(t, p.ID, status.PolicyID, "PolicyID mismatch")
 	})
 }
 
@@ -759,14 +661,10 @@ func TestStorageServer_SetPolicy(t *testing.T) {
 		BasePath:   tmpDir,
 		AppendOnly: false,
 	})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	require.NoError(t, err, "Failed to create server")
 
 	// Initially no policy
-	if s.GetPolicy() != nil {
-		t.Error("Should have no policy initially")
-	}
+	assert.Nil(t, s.GetPolicy(), "Should have no policy initially")
 
 	// Create and sign a policy
 	ownerPub, ownerPriv, _ := crypto.GenerateKeyPair()
@@ -780,18 +678,13 @@ func TestStorageServer_SetPolicy(t *testing.T) {
 	p.SignAsHost(hostPriv)
 
 	// Set policy
-	if err := s.SetPolicy(p); err != nil {
-		t.Fatalf("SetPolicy failed: %v", err)
-	}
+	err = s.SetPolicy(p)
+	require.NoError(t, err, "SetPolicy failed")
 
 	// Verify policy is set
 	got := s.GetPolicy()
-	if got == nil {
-		t.Fatal("GetPolicy returned nil after SetPolicy")
-	}
-	if got.ID != p.ID {
-		t.Errorf("Policy ID mismatch: got %s, want %s", got.ID, p.ID)
-	}
+	require.NotNil(t, got, "GetPolicy returned nil after SetPolicy")
+	assert.Equal(t, p.ID, got.ID, "Policy ID mismatch")
 
 	// Test unsigned policy is rejected
 	t.Run("unsigned policy rejected", func(t *testing.T) {
@@ -799,16 +692,14 @@ func TestStorageServer_SetPolicy(t *testing.T) {
 			"TestOwner", crypto.KeyID(ownerPub), crypto.EncodePublicKey(ownerPub),
 			"TestHost", crypto.KeyID(hostPub), crypto.EncodePublicKey(hostPub),
 		)
-		if err := s.SetPolicy(unsigned); err == nil {
-			t.Error("SetPolicy should reject unsigned policy")
-		}
+		err := s.SetPolicy(unsigned)
+		assert.Error(t, err, "SetPolicy should reject unsigned policy")
 	})
 
 	// Test nil policy rejected
 	t.Run("nil policy rejected", func(t *testing.T) {
-		if err := s.SetPolicy(nil); err == nil {
-			t.Error("SetPolicy should reject nil policy")
-		}
+		err := s.SetPolicy(nil)
+		assert.Error(t, err, "SetPolicy should reject nil policy")
 	})
 }
 
@@ -820,9 +711,7 @@ func TestStorageServer_AuditLog(t *testing.T) {
 		BasePath:   tmpDir,
 		AppendOnly: false,
 	})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	require.NoError(t, err, "Failed to create server")
 	s.Start()
 
 	handler := s.Handler()
@@ -844,24 +733,18 @@ func TestStorageServer_AuditLog(t *testing.T) {
 
 	// Check audit log
 	entries := s.GetAuditLog(10)
-	if len(entries) == 0 {
-		t.Error("Expected audit entries")
-	}
+	assert.NotEmpty(t, entries, "Expected audit entries")
 
 	// Find the delete entry
 	foundDelete := false
 	for _, e := range entries {
 		if e.Operation == "DELETE" {
 			foundDelete = true
-			if !e.Success {
-				t.Error("Delete should be marked as successful")
-			}
+			assert.True(t, e.Success, "Delete should be marked as successful")
 			break
 		}
 	}
-	if !foundDelete {
-		t.Error("Expected DELETE operation in audit log")
-	}
+	assert.True(t, foundDelete, "Expected DELETE operation in audit log")
 }
 
 // Test policy persistence
@@ -887,12 +770,8 @@ func TestStorageServer_PolicyPersistence(t *testing.T) {
 	s2, _ := NewServer(Config{BasePath: tmpDir})
 
 	got := s2.GetPolicy()
-	if got == nil {
-		t.Fatal("Policy should be loaded from disk")
-	}
-	if got.RetentionDays != 90 {
-		t.Errorf("RetentionDays mismatch: got %d, want 90", got.RetentionDays)
-	}
+	require.NotNil(t, got, "Policy should be loaded from disk")
+	assert.Equal(t, 90, got.RetentionDays, "RetentionDays mismatch")
 }
 
 // Silence unused variable warnings
