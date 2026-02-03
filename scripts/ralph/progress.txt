@@ -1,0 +1,4 @@
+# Ralph Progress Log
+Branch: refactor/backend-tests-and-splits
+Started: Mon Feb  3 13:10:00 MST 2026
+---
