@@ -13,7 +13,7 @@
         "Coverage >80%: cd backend && go test ./internal/crypto/... -cover"
       ],
       "priority": 1,
-      "passes": false
+      "passes": true
     },
     {
       "id": "2",
@@ -26,7 +26,7 @@
         "Coverage >60%"
       ],
       "priority": 2,
-      "passes": false
+      "passes": true
     },
     {
       "id": "3",
@@ -39,7 +39,7 @@
         "Package API unchanged (same exported functions/types)"
       ],
       "priority": 3,
-      "passes": false
+      "passes": true
     },
     {
       "id": "4",
@@ -52,7 +52,7 @@
         "CLI behavior unchanged"
       ],
       "priority": 4,
-      "passes": false
+      "passes": true
     },
     {
       "id": "5",
@@ -65,7 +65,7 @@
         "Package API unchanged"
       ],
       "priority": 5,
-      "passes": false
+      "passes": true
     },
     {
       "id": "6",
@@ -77,7 +77,7 @@
         "All existing tests still pass"
       ],
       "priority": 6,
-      "passes": false
+      "passes": true
     },
     {
       "id": "7",
@@ -89,7 +89,7 @@
         "No new lint errors (if golangci-lint available)"
       ],
       "priority": 7,
-      "passes": false
+      "passes": true
     }
   ]
 }
