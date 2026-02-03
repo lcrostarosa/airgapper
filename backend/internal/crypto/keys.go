@@ -58,21 +58,22 @@ type RestoreRequestSignData struct {
 	KeyHolderID string   `json:"key_holder_id"`
 }
 
-// HashRestoreRequest creates a canonical hash of a restore request for signing
-func HashRestoreRequest(requestID, requester, snapshotID, reason, keyHolderID string, paths []string, createdAt int64) ([]byte, error) {
+// Hash creates a canonical hash of the restore request for signing
+func (d *RestoreRequestSignData) Hash() ([]byte, error) {
 	// Sort paths for canonical ordering
-	sortedPaths := make([]string, len(paths))
-	copy(sortedPaths, paths)
+	sortedPaths := make([]string, len(d.Paths))
+	copy(sortedPaths, d.Paths)
 	sort.Strings(sortedPaths)
 
+	// Create a copy with sorted paths for consistent hashing
 	data := RestoreRequestSignData{
-		RequestID:   requestID,
-		Requester:   requester,
-		SnapshotID:  snapshotID,
+		RequestID:   d.RequestID,
+		Requester:   d.Requester,
+		SnapshotID:  d.SnapshotID,
 		Paths:       sortedPaths,
-		Reason:      reason,
-		CreatedAt:   createdAt,
-		KeyHolderID: keyHolderID,
+		Reason:      d.Reason,
+		CreatedAt:   d.CreatedAt,
+		KeyHolderID: d.KeyHolderID,
 	}
 
 	// Create canonical JSON
@@ -86,18 +87,18 @@ func HashRestoreRequest(requestID, requester, snapshotID, reason, keyHolderID st
 	return hash[:], nil
 }
 
-// SignRestoreRequest signs a restore request approval
-func SignRestoreRequest(privateKey []byte, requestID, requester, snapshotID, reason, keyHolderID string, paths []string, createdAt int64) ([]byte, error) {
-	hash, err := HashRestoreRequest(requestID, requester, snapshotID, reason, keyHolderID, paths, createdAt)
+// Sign signs the restore request with an Ed25519 private key
+func (d *RestoreRequestSignData) Sign(privateKey []byte) ([]byte, error) {
+	hash, err := d.Hash()
 	if err != nil {
 		return nil, err
 	}
 	return Sign(privateKey, hash)
 }
 
-// VerifyRestoreRequestSignature verifies a signature on a restore request
-func VerifyRestoreRequestSignature(publicKey, signature []byte, requestID, requester, snapshotID, reason, keyHolderID string, paths []string, createdAt int64) (bool, error) {
-	hash, err := HashRestoreRequest(requestID, requester, snapshotID, reason, keyHolderID, paths, createdAt)
+// Verify verifies a signature against a public key
+func (d *RestoreRequestSignData) Verify(publicKey, signature []byte) (bool, error) {
+	hash, err := d.Hash()
 	if err != nil {
 		return false, err
 	}

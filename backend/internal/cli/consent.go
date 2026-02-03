@@ -195,16 +195,15 @@ func approveConsensus(ctx *runner.CommandContext, mgr *consent.Manager, requestI
 		logging.String("requestID", requestID),
 		logging.String("keyID", keyID))
 
-	signature, err := crypto.SignRestoreRequest(
-		ctx.Config.PrivateKey,
-		req.ID,
-		req.Requester,
-		req.SnapshotID,
-		req.Reason,
-		keyID,
-		req.Paths,
-		req.CreatedAt.Unix(),
-	)
+	signature, err := (&crypto.RestoreRequestSignData{
+		RequestID:   req.ID,
+		Requester:   req.Requester,
+		SnapshotID:  req.SnapshotID,
+		Reason:      req.Reason,
+		KeyHolderID: keyID,
+		Paths:       req.Paths,
+		CreatedAt:   req.CreatedAt.Unix(),
+	}).Sign(ctx.Config.PrivateKey)
 	if err != nil {
 		return fmt.Errorf("failed to sign request: %w", err)
 	}

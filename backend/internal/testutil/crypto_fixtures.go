@@ -60,17 +60,17 @@ func (k *CryptoKeyFixture) Verify(data, sig []byte) bool {
 }
 
 // SignRestoreRequest signs a restore request with this key
-func (k *CryptoKeyFixture) SignRestoreRequest(requestID, requester, snapshotID, reason string, paths []string, createdAt int64) ([]byte, error) {
-	return crypto.SignRestoreRequest(
-		k.PrivateKey, requestID, requester, snapshotID, reason, k.KeyID, paths, createdAt,
-	)
+func (k *CryptoKeyFixture) SignRestoreRequest(req *crypto.RestoreRequestSignData) ([]byte, error) {
+	// Set KeyHolderID to this key's ID if not already set
+	if req.KeyHolderID == "" {
+		req.KeyHolderID = k.KeyID
+	}
+	return req.Sign(k.PrivateKey)
 }
 
 // VerifyRestoreRequest verifies a restore request signature
-func (k *CryptoKeyFixture) VerifyRestoreRequest(sig []byte, requestID, requester, snapshotID, reason, keyID string, paths []string, createdAt int64) (bool, error) {
-	return crypto.VerifyRestoreRequestSignature(
-		k.PublicKey, sig, requestID, requester, snapshotID, reason, keyID, paths, createdAt,
-	)
+func (k *CryptoKeyFixture) VerifyRestoreRequest(sig []byte, req *crypto.RestoreRequestSignData) (bool, error) {
+	return req.Verify(k.PublicKey, sig)
 }
 
 // Hash returns SHA256 hash of the public key
@@ -204,14 +204,27 @@ func NewRestoreRequestFixture() *RestoreRequestFixture {
 	}
 }
 
+// ToSignData converts this fixture to a RestoreRequestSignData
+func (r *RestoreRequestFixture) ToSignData(keyHolderID string) *crypto.RestoreRequestSignData {
+	return &crypto.RestoreRequestSignData{
+		RequestID:   r.RequestID,
+		Requester:   r.Requester,
+		SnapshotID:  r.SnapshotID,
+		Reason:      r.Reason,
+		Paths:       r.Paths,
+		CreatedAt:   r.CreatedAt,
+		KeyHolderID: keyHolderID,
+	}
+}
+
 // Sign signs this request with the given key fixture
 func (r *RestoreRequestFixture) Sign(key *CryptoKeyFixture) ([]byte, error) {
-	return key.SignRestoreRequest(r.RequestID, r.Requester, r.SnapshotID, r.Reason, r.Paths, r.CreatedAt)
+	return key.SignRestoreRequest(r.ToSignData(key.KeyID))
 }
 
 // Verify verifies a signature against this request using the given key
 func (r *RestoreRequestFixture) Verify(key *CryptoKeyFixture, sig []byte) (bool, error) {
-	return key.VerifyRestoreRequest(sig, r.RequestID, r.Requester, r.SnapshotID, r.Reason, key.KeyID, r.Paths, r.CreatedAt)
+	return key.VerifyRestoreRequest(sig, r.ToSignData(key.KeyID))
 }
 
 // WithTamperedReason returns a copy with modified reason

@@ -84,17 +84,15 @@ func (s *ConsentService) SignRequest(params SignRequestParams) (*ApprovalProgres
 	}
 
 	// Verify signature
-	valid, err := crypto.VerifyRestoreRequestSignature(
-		holder.PublicKey,
-		params.Signature,
-		req.ID,
-		req.Requester,
-		req.SnapshotID,
-		req.Reason,
-		params.KeyHolderID,
-		req.Paths,
-		req.CreatedAt.Unix(),
-	)
+	valid, err := (&crypto.RestoreRequestSignData{
+		RequestID:   req.ID,
+		Requester:   req.Requester,
+		SnapshotID:  req.SnapshotID,
+		Reason:      req.Reason,
+		KeyHolderID: params.KeyHolderID,
+		Paths:       req.Paths,
+		CreatedAt:   req.CreatedAt.Unix(),
+	}).Verify(holder.PublicKey, params.Signature)
 	if err != nil {
 		return nil, err
 	}

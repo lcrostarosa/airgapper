@@ -125,36 +125,44 @@ func TestE2E_Consensus_SignVerify(t *testing.T) {
 
 	// Alice signs the request
 	aliceKeyID := crypto.KeyID(alicePub)
-	aliceSig, err := crypto.SignRestoreRequest(
-		alicePriv, requestID, requester, snapshotID, reason, aliceKeyID, paths, createdAt,
-	)
+	aliceReq := &crypto.RestoreRequestSignData{
+		RequestID:   requestID,
+		Requester:   requester,
+		SnapshotID:  snapshotID,
+		Reason:      reason,
+		KeyHolderID: aliceKeyID,
+		Paths:       paths,
+		CreatedAt:   createdAt,
+	}
+	aliceSig, err := aliceReq.Sign(alicePriv)
 	require.NoError(t, err, "Alice's signature failed")
 
 	// Bob signs the request
 	bobKeyID := crypto.KeyID(bobPub)
-	bobSig, err := crypto.SignRestoreRequest(
-		bobPriv, requestID, requester, snapshotID, reason, bobKeyID, paths, createdAt,
-	)
+	bobReq := &crypto.RestoreRequestSignData{
+		RequestID:   requestID,
+		Requester:   requester,
+		SnapshotID:  snapshotID,
+		Reason:      reason,
+		KeyHolderID: bobKeyID,
+		Paths:       paths,
+		CreatedAt:   createdAt,
+	}
+	bobSig, err := bobReq.Sign(bobPriv)
 	require.NoError(t, err, "Bob's signature failed")
 
 	// Verify Alice's signature
-	aliceValid, err := crypto.VerifyRestoreRequestSignature(
-		alicePub, aliceSig, requestID, requester, snapshotID, reason, aliceKeyID, paths, createdAt,
-	)
+	aliceValid, err := aliceReq.Verify(alicePub, aliceSig)
 	require.NoError(t, err, "Failed to verify Alice's signature")
 	assert.True(t, aliceValid, "Alice's signature should be valid")
 
 	// Verify Bob's signature
-	bobValid, err := crypto.VerifyRestoreRequestSignature(
-		bobPub, bobSig, requestID, requester, snapshotID, reason, bobKeyID, paths, createdAt,
-	)
+	bobValid, err := bobReq.Verify(bobPub, bobSig)
 	require.NoError(t, err, "Failed to verify Bob's signature")
 	assert.True(t, bobValid, "Bob's signature should be valid")
 
 	// Cross-verify: Bob's key should NOT validate Alice's signature
-	crossValid, _ := crypto.VerifyRestoreRequestSignature(
-		bobPub, aliceSig, requestID, requester, snapshotID, reason, aliceKeyID, paths, createdAt,
-	)
+	crossValid, _ := aliceReq.Verify(bobPub, aliceSig)
 	assert.False(t, crossValid, "Bob's key should NOT validate Alice's signature")
 
 	t.Logf("Consensus signing verified: Alice=%s, Bob=%s", aliceKeyID, bobKeyID)
@@ -174,29 +182,55 @@ func TestE2E_Consensus_TamperedRequest(t *testing.T) {
 	keyID := crypto.KeyID(pub)
 
 	// Sign the original request
-	sig, err := crypto.SignRestoreRequest(
-		priv, requestID, requester, snapshotID, reason, keyID, paths, createdAt,
-	)
+	originalReq := &crypto.RestoreRequestSignData{
+		RequestID:   requestID,
+		Requester:   requester,
+		SnapshotID:  snapshotID,
+		Reason:      reason,
+		KeyHolderID: keyID,
+		Paths:       paths,
+		CreatedAt:   createdAt,
+	}
+	sig, err := originalReq.Sign(priv)
 	require.NoError(t, err, "Signing failed")
 
 	// Try to verify with tampered reason
-	tamperedReason := "Actually I want to steal data"
-	valid, _ := crypto.VerifyRestoreRequestSignature(
-		pub, sig, requestID, requester, snapshotID, tamperedReason, keyID, paths, createdAt,
-	)
+	tamperedReasonReq := &crypto.RestoreRequestSignData{
+		RequestID:   requestID,
+		Requester:   requester,
+		SnapshotID:  snapshotID,
+		Reason:      "Actually I want to steal data",
+		KeyHolderID: keyID,
+		Paths:       paths,
+		CreatedAt:   createdAt,
+	}
+	valid, _ := tamperedReasonReq.Verify(pub, sig)
 	assert.False(t, valid, "Tampered reason should invalidate signature")
 
 	// Try to verify with tampered paths
-	tamperedPaths := []string{"/home/alice/work", "/etc/passwd"}
-	valid, _ = crypto.VerifyRestoreRequestSignature(
-		pub, sig, requestID, requester, snapshotID, reason, keyID, tamperedPaths, createdAt,
-	)
+	tamperedPathsReq := &crypto.RestoreRequestSignData{
+		RequestID:   requestID,
+		Requester:   requester,
+		SnapshotID:  snapshotID,
+		Reason:      reason,
+		KeyHolderID: keyID,
+		Paths:       []string{"/home/alice/work", "/etc/passwd"},
+		CreatedAt:   createdAt,
+	}
+	valid, _ = tamperedPathsReq.Verify(pub, sig)
 	assert.False(t, valid, "Tampered paths should invalidate signature")
 
 	// Try to verify with tampered snapshot
-	valid, _ = crypto.VerifyRestoreRequestSignature(
-		pub, sig, requestID, requester, "different-snapshot", reason, keyID, paths, createdAt,
-	)
+	tamperedSnapshotReq := &crypto.RestoreRequestSignData{
+		RequestID:   requestID,
+		Requester:   requester,
+		SnapshotID:  "different-snapshot",
+		Reason:      reason,
+		KeyHolderID: keyID,
+		Paths:       paths,
+		CreatedAt:   createdAt,
+	}
+	valid, _ = tamperedSnapshotReq.Verify(pub, sig)
 	assert.False(t, valid, "Tampered snapshot should invalidate signature")
 
 	t.Log("All tampered request variations correctly rejected")
@@ -355,16 +389,30 @@ func TestE2E_FullWorkflow_Consensus(t *testing.T) {
 	t.Log("Step 3: Owner creates restore request")
 
 	// Step 4: Owner signs request (signature 1 of 2)
-	ownerSig, err := crypto.SignRestoreRequest(
-		ownerPriv, requestID, requester, snapshotID, reason, ownerID, paths, createdAt,
-	)
+	ownerReq := &crypto.RestoreRequestSignData{
+		RequestID:   requestID,
+		Requester:   requester,
+		SnapshotID:  snapshotID,
+		Reason:      reason,
+		KeyHolderID: ownerID,
+		Paths:       paths,
+		CreatedAt:   createdAt,
+	}
+	ownerSig, err := ownerReq.Sign(ownerPriv)
 	require.NoError(t, err, "Step 4 failed - Owner sign")
 	t.Logf("Step 4: Owner signed request (1/%d)", threshold)
 
 	// Step 5: Holder1 signs request (signature 2 of 2)
-	holder1Sig, err := crypto.SignRestoreRequest(
-		holder1Priv, requestID, requester, snapshotID, reason, holder1ID, paths, createdAt,
-	)
+	holder1Req := &crypto.RestoreRequestSignData{
+		RequestID:   requestID,
+		Requester:   requester,
+		SnapshotID:  snapshotID,
+		Reason:      reason,
+		KeyHolderID: holder1ID,
+		Paths:       paths,
+		CreatedAt:   createdAt,
+	}
+	holder1Sig, err := holder1Req.Sign(holder1Priv)
 	require.NoError(t, err, "Step 5 failed - Holder1 sign")
 	t.Logf("Step 5: Holder1 signed request (2/%d) - threshold met!", threshold)
 
@@ -373,17 +421,15 @@ func TestE2E_FullWorkflow_Consensus(t *testing.T) {
 		name string
 		pub  []byte
 		sig  []byte
-		id   string
+		req  *crypto.RestoreRequestSignData
 	}{
-		{"owner", ownerPub, ownerSig, ownerID},
-		{"holder1", holder1Pub, holder1Sig, holder1ID},
+		{"owner", ownerPub, ownerSig, ownerReq},
+		{"holder1", holder1Pub, holder1Sig, holder1Req},
 	}
 
 	validCount := 0
 	for _, s := range sigs {
-		valid, _ := crypto.VerifyRestoreRequestSignature(
-			s.pub, s.sig, requestID, requester, snapshotID, reason, s.id, paths, createdAt,
-		)
+		valid, _ := s.req.Verify(s.pub, s.sig)
 		if valid {
 			validCount++
 		} else {
