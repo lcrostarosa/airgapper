@@ -1,4 +1,130 @@
 # Ralph Progress Log
 Branch: refactor/frontend-splits-and-tests
 Started: Mon Feb  3 12:45:00 MST 2026
+
+## Codebase Patterns
+- Use `useCallback` for functions passed to child components that appear in useEffect deps
+- Export types from types.ts, constants/helpers from utils.ts, components from index.ts
+- Step-based wizards: orchestrator component manages state, step components receive state via props
+- Lint allows 0 warnings: `npx eslint src/ --max-warnings=0`
+- Avoid directory names that match component file names (case-insensitive on macOS) - use `dashboard-tabs` not `dashboard`
+
+---
+
+## 2026-02-03 - Story 1
+- What was implemented: Split 789-line HostSetup.tsx into 5 step components
+- Files changed:
+  - frontend/src/components/HostSetup.tsx (refactored to 127 lines orchestrator)
+  - frontend/src/components/host-setup/HostSetupIntro.tsx (76 lines)
+  - frontend/src/components/host-setup/HostSetupStorage.tsx (114 lines)
+  - frontend/src/components/host-setup/HostSetupTerms.tsx (196 lines)
+  - frontend/src/components/host-setup/HostSetupInitialize.tsx (149 lines)
+  - frontend/src/components/host-setup/HostSetupComplete.tsx (94 lines)
+  - frontend/src/components/host-setup/types.ts (shared types)
+  - frontend/src/components/host-setup/utils.ts (constants and helper functions)
+  - frontend/src/components/host-setup/index.ts (exports)
+- **Learnings for future iterations:**
+  - StepIndicator component accepts `steps` array and `currentStep` index
+  - Radio button groups (RestoreApproval, DeletionPolicy) can be extracted to sub-components
+  - useClipboard hook from hooks/useClipboard.ts for copy functionality
+  - Alert and CopyableField from components/ui/ for common UI patterns
+---
+
+## 2026-02-03 - Story 2
+- What was implemented: Split 588-line Dashboard.tsx into tab components with further card extraction
+- Files changed:
+  - frontend/src/components/Dashboard.tsx (refactored to 127 lines orchestrator)
+  - frontend/src/components/dashboard-tabs/DashboardOverview.tsx (37 lines - orchestrates cards)
+  - frontend/src/components/dashboard-tabs/DashboardRequests.tsx (93 lines)
+  - frontend/src/components/dashboard-tabs/DashboardPaths.tsx (80 lines)
+  - frontend/src/components/dashboard-tabs/StatusCard.tsx (76 lines)
+  - frontend/src/components/dashboard-tabs/KeyHoldersCard.tsx (51 lines)
+  - frontend/src/components/dashboard-tabs/YourKeyCard.tsx (79 lines)
+  - frontend/src/components/dashboard-tabs/TestReconstructionCard.tsx (92 lines)
+  - frontend/src/components/dashboard-tabs/CLICommandsCard.tsx (61 lines)
+  - frontend/src/components/dashboard-tabs/types.ts (shared types)
+  - frontend/src/components/dashboard-tabs/index.ts (exports)
+- **Learnings for future iterations:**
+  - Named directory `dashboard-tabs` instead of `dashboard` to avoid case-insensitive conflict with Dashboard.tsx on macOS
+  - Tab-based components: orchestrator manages tab state, each tab is a separate component
+  - Further splitting: if a component is too large, extract logical card sections into sub-components
+  - Status tab was further split into 5 card components to meet line limits
+---
+
+## 2026-02-03 - Story 3
+- What was implemented: Split 563-line InitVault.tsx into 4 step components
+- Files changed:
+  - frontend/src/components/InitVault.tsx (refactored to 192 lines orchestrator)
+  - frontend/src/components/init-vault/InitVaultPaths.tsx (131 lines - name and backup paths)
+  - frontend/src/components/init-vault/InitVaultDestination.tsx (78 lines - repo URL)
+  - frontend/src/components/init-vault/InitVaultSecurity.tsx (119 lines - consensus/SSS settings)
+  - frontend/src/components/init-vault/InitVaultComplete.tsx (170 lines - result screen)
+  - frontend/src/components/init-vault/types.ts (45 lines - shared types)
+  - frontend/src/components/init-vault/index.ts (5 lines - exports)
+- **Learnings for future iterations:**
+  - InitVault uses a "paths -> destination -> security -> result" wizard flow
+  - PathsStepProps doesn't extend StepProps since it uses onNavigate instead of onBack for the first step
+  - ConsensusSetup component is reusable for selecting m-of-n consensus thresholds
+  - The result screen has different content for consensus mode vs legacy SSS mode
+---
+
+## 2026-02-03 - Story 4
+- What was implemented: Split 360-line JoinVault.tsx into mode components
+- Files changed:
+  - frontend/src/components/JoinVault.tsx (refactored to 125 lines orchestrator)
+  - frontend/src/components/join-vault/JoinVaultConsensus.tsx (68 lines - consensus mode form)
+  - frontend/src/components/join-vault/JoinVaultSSS.tsx (87 lines - SSS mode form)
+  - frontend/src/components/join-vault/JoinVaultResult.tsx (87 lines - keys generated screen)
+  - frontend/src/components/join-vault/ModeSelector.tsx (33 lines - mode toggle buttons)
+  - frontend/src/components/join-vault/ModeHelpText.tsx (29 lines - mode description)
+  - frontend/src/components/join-vault/types.ts (47 lines - shared types)
+  - frontend/src/components/join-vault/utils.ts (60 lines - validation and config builders)
+  - frontend/src/components/join-vault/index.ts (12 lines - exports)
+- **Learnings for future iterations:**
+  - JoinVault has two modes (consensus vs SSS) controlled by a mode selector
+  - Mode-based splitting: extract mode selector and each mode's form/result into separate components
+  - Validation logic can be extracted to utils.ts (validateCommonFields, validateSSSFields)
+  - Config builders (buildSSSConfig, buildConsensusConfig) keep orchestrator cleaner
+  - JoinVaultResult is only shown for consensus mode after keys are generated
+---
+
+## 2026-02-03 - Story 5
+- What was implemented: Added comprehensive unit tests for SSS library
+- Files changed:
+  - frontend/src/lib/sss.test.ts (expanded from 57 to 315 lines with 34 tests)
+- **Learnings for future iterations:**
+  - SSS tests organized into describe blocks: split/combine, empty inputs, hex conversion, threshold schemes, boundary conditions, error cases, order independence, generatePassword
+  - Invalid hex characters coerce to 0 when assigned to Uint8Array (not NaN)
+  - k-of-n testing: verify any k shares work, verify k-1 shares produce wrong result
+  - Order independence testing: test all permutations of share subsets
+  - Coverage tool (@vitest/coverage-v8) not installed - verify coverage manually by reviewing code paths
+---
+
+## 2026-02-03 - Story 6
+- What was implemented: Added comprehensive unit tests for crypto library (Ed25519)
+- Files changed:
+  - frontend/src/lib/crypto.test.ts (new file, 748 lines with 53 tests)
+- **Learnings for future iterations:**
+  - Ed25519 signatures are 64 bytes (128 hex chars)
+  - Ed25519 signatures are deterministic (same key + message = same signature)
+  - keyId generates first 8 bytes of SHA-256 hash of public key (16 hex chars)
+  - hashRestoreRequest sorts paths for canonical ordering before hashing
+  - Crypto tests organized: isEd25519Supported, generateKeyPair, sign/verify, keyId, hashRestoreRequest, signRestoreRequest/verifyRestoreRequestSignature, hex conversion, integration
+  - Pre-existing lint issues in App.tsx and generated protobuf files (not related to this story)
+---
+
+## 2026-02-03 - Story 7
+- What was implemented: Fixed pre-existing lint issues to pass all quality checks
+- Files changed:
+  - frontend/src/App.tsx (refactored state initialization to use state initializer instead of useEffect)
+  - frontend/eslint.config.js (added src/gen to globalIgnores for generated protobuf files)
+- Quality check results:
+  - ✅ ESLint: 0 errors, 0 warnings
+  - ✅ TypeScript: no type errors
+  - ✅ Build: successful
+  - ✅ Tests: 87 passed (34 SSS + 53 crypto)
+- **Learnings for future iterations:**
+  - Use state initializer function instead of useEffect for loading initial state from localStorage
+  - Generated files (src/gen) should be ignored in eslint config to avoid unused directive warnings
+  - State initializer pattern: `useState<T>(initFn)` where initFn returns T
 ---
