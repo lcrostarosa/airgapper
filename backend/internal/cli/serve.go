@@ -133,7 +133,9 @@ func setupScheduler(cmd *cobra.Command, serveCfg *config.Config, apiServer *api.
 		err := client.Backup(context.Background(), backupPaths, []string{"airgapper", "scheduled"})
 		if err == nil && serveCfg.Emergency != nil {
 			serveCfg.Emergency.GetDeadManSwitch().RecordActivity()
-			serveCfg.Save()
+			if saveErr := serveCfg.Save(); saveErr != nil {
+				logging.Warn("Failed to save config after backup", logging.Err(saveErr))
+			}
 		}
 		return err
 	}

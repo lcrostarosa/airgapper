@@ -587,7 +587,7 @@ func BenchmarkStorageServer_Download(b *testing.B) {
 		req := httptest.NewRequest(http.MethodGet, "/benchrepo/keys/"+keyName, nil)
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)
-		io.Copy(io.Discard, w.Body)
+		_, _ = io.Copy(io.Discard, w.Body)
 	}
 }
 
@@ -609,8 +609,8 @@ func TestStorageServer_PolicyEnforcement(t *testing.T) {
 	p.AppendOnlyLocked = false // Allow testing deletion
 
 	// Sign the policy
-	p.SignAsOwner(ownerPriv)
-	p.SignAsHost(hostPriv)
+	require.NoError(t, p.SignAsOwner(ownerPriv), "Failed to sign as owner")
+	require.NoError(t, p.SignAsHost(hostPriv), "Failed to sign as host")
 
 	// Create server with policy
 	s, err := NewServer(Config{
@@ -674,8 +674,8 @@ func TestStorageServer_SetPolicy(t *testing.T) {
 		"TestOwner", crypto.KeyID(ownerPub), crypto.EncodePublicKey(ownerPub),
 		"TestHost", crypto.KeyID(hostPub), crypto.EncodePublicKey(hostPub),
 	)
-	p.SignAsOwner(ownerPriv)
-	p.SignAsHost(hostPriv)
+	require.NoError(t, p.SignAsOwner(ownerPriv), "Failed to sign as owner")
+	require.NoError(t, p.SignAsHost(hostPriv), "Failed to sign as host")
 
 	// Set policy
 	err = s.SetPolicy(p)
@@ -759,12 +759,12 @@ func TestStorageServer_PolicyPersistence(t *testing.T) {
 		"TestHost", crypto.KeyID(hostPub), crypto.EncodePublicKey(hostPub),
 	)
 	p.RetentionDays = 90
-	p.SignAsOwner(ownerPriv)
-	p.SignAsHost(hostPriv)
+	require.NoError(t, p.SignAsOwner(ownerPriv), "Failed to sign as owner")
+	require.NoError(t, p.SignAsHost(hostPriv), "Failed to sign as host")
 
 	// Create server and set policy
 	s1, _ := NewServer(Config{BasePath: tmpDir})
-	s1.SetPolicy(p)
+	require.NoError(t, s1.SetPolicy(p), "Failed to set policy")
 
 	// Create new server pointing to same directory - should load policy
 	s2, _ := NewServer(Config{BasePath: tmpDir})

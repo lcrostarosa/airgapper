@@ -42,7 +42,7 @@ func (s *Server) checkDeleteAllowedWithTicket(filePath, snapshotID, ticketID str
 
 			// Record ticket usage
 			if ticketID != "" {
-				s.ticketManager.RecordUsage(ticketID, []string{filePath})
+				_, _ = s.ticketManager.RecordUsage(ticketID, []string{filePath})
 			}
 		}
 	}

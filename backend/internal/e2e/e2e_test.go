@@ -315,7 +315,8 @@ func TestE2E_HashValidation_ThresholdSchemes(t *testing.T) {
 func TestE2E_FullWorkflow_SSS(t *testing.T) {
 	// Step 1: Owner generates password and splits it
 	password := make([]byte, 32)
-	rand.Read(password)
+	_, err := rand.Read(password)
+	require.NoError(t, err, "failed to generate random password")
 	passwordHex := hex.EncodeToString(password)
 	passwordHash := sha256.Sum256([]byte(passwordHex))
 
@@ -378,8 +379,9 @@ func TestE2E_FullWorkflow_Consensus(t *testing.T) {
 	t.Logf("Step 2: Configured %d-of-%d consensus", threshold, totalHolders)
 
 	// Step 3: Owner creates restore request
-	requestID := "restore-" + hex.EncodeToString(make([]byte, 4))
-	rand.Read([]byte(requestID)[8:])
+	randomBytes := make([]byte, 4)
+	_, _ = rand.Read(randomBytes)
+	requestID := "restore-" + hex.EncodeToString(randomBytes)
 	requester := "owner"
 	snapshotID := "latest"
 	reason := "Need to restore after system failure"
@@ -474,7 +476,8 @@ func TestE2E_DataIntegrity_FileSimulation(t *testing.T) {
 
 	// Simulate the encryption key
 	key := make([]byte, 32)
-	rand.Read(key)
+	_, err = rand.Read(key)
+	require.NoError(t, err, "failed to generate random key")
 	keyHex := hex.EncodeToString(key)
 
 	// Split the key

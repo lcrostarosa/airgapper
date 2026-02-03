@@ -7,6 +7,7 @@ import (
 	"time"
 
 	apperrors "github.com/lcrostarosa/airgapper/backend/internal/errors"
+	"github.com/lcrostarosa/airgapper/backend/internal/logging"
 )
 
 // RequestStore provides generic storage operations for request types.
@@ -127,7 +128,9 @@ func (s *RequestStore[T]) AddApproval(id, keyHolderID, keyHolderName string, sig
 
 	if time.Now().After(req.GetExpiresAt()) {
 		req.SetStatus(StatusExpired)
-		s.Save(req)
+		if err := s.Save(req); err != nil {
+			logging.Warn("Failed to save expired request", logging.Err(err))
+		}
 		return apperrors.ErrRequestExpired
 	}
 

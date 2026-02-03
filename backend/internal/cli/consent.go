@@ -30,7 +30,7 @@ func init() {
 	f.String("snapshot", "latest", "Snapshot ID to restore")
 	f.String("reason", "", "Reason for restore (required)")
 	f.String("peer", "", "Peer address to notify")
-	requestCmd.MarkFlagRequired("reason")
+	_ = requestCmd.MarkFlagRequired("reason")
 	rootCmd.AddCommand(requestCmd)
 }
 

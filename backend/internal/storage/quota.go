@@ -9,7 +9,7 @@ import (
 
 func (s *Server) calculateUsedSpace() int64 {
 	var total int64
-	filepath.Walk(s.basePath, func(path string, info os.FileInfo, err error) error {
+	_ = filepath.Walk(s.basePath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
 		}

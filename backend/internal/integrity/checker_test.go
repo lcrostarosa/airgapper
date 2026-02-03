@@ -23,7 +23,8 @@ func setupTestRepo(t *testing.T, basePath, repoName string) {
 
 	// Create config file
 	configData := []byte("test config data")
-	os.WriteFile(filepath.Join(repoPath, "config"), configData, 0644)
+	err := os.WriteFile(filepath.Join(repoPath, "config"), configData, 0644)
+	require.NoError(t, err, "failed to write config")
 
 	// Create some data files (content-addressable)
 	for i := 0; i < 5; i++ {
@@ -33,18 +34,22 @@ func setupTestRepo(t *testing.T, basePath, repoName string) {
 
 		// Data files go in subdirectories by first 2 chars
 		subdir := filepath.Join(repoPath, "data", hashHex[:2])
-		os.MkdirAll(subdir, 0755)
-		os.WriteFile(filepath.Join(subdir, hashHex), content, 0644)
+		err = os.MkdirAll(subdir, 0755)
+		require.NoError(t, err, "failed to create subdir")
+		err = os.WriteFile(filepath.Join(subdir, hashHex), content, 0644)
+		require.NoError(t, err, "failed to write data file")
 	}
 
 	// Create a key file
 	keyData := []byte("key data")
 	keyHash := sha256.Sum256(keyData)
-	os.WriteFile(filepath.Join(repoPath, "keys", hex.EncodeToString(keyHash[:])), keyData, 0644)
+	err = os.WriteFile(filepath.Join(repoPath, "keys", hex.EncodeToString(keyHash[:])), keyData, 0644)
+	require.NoError(t, err, "failed to write key file")
 
 	// Create a snapshot file
 	snapshotData := []byte("snapshot data")
-	os.WriteFile(filepath.Join(repoPath, "snapshots", "snap123"), snapshotData, 0644)
+	err = os.WriteFile(filepath.Join(repoPath, "snapshots", "snap123"), snapshotData, 0644)
+	require.NoError(t, err, "failed to write snapshot file")
 }
 
 func TestCheckDataIntegrity(t *testing.T) {
@@ -75,7 +80,7 @@ func TestCheckDataIntegrity_CorruptFile(t *testing.T) {
 		if len(subEntries) > 0 {
 			// Write garbage to file
 			filePath := filepath.Join(dataPath, subdir, subEntries[0].Name())
-			os.WriteFile(filePath, []byte("CORRUPTED DATA"), 0644)
+			_ = os.WriteFile(filePath, []byte("CORRUPTED DATA"), 0644)
 		}
 	}
 
@@ -207,9 +212,12 @@ func TestCheckHistory(t *testing.T) {
 	checker, _ := NewChecker(tmpDir)
 
 	// Run a few checks
-	checker.CheckDataIntegrity("testrepo")
-	checker.CheckDataIntegrity("testrepo")
-	checker.CheckDataIntegrity("testrepo")
+	_, err := checker.CheckDataIntegrity("testrepo")
+	require.NoError(t, err, "first check failed")
+	_, err = checker.CheckDataIntegrity("testrepo")
+	require.NoError(t, err, "second check failed")
+	_, err = checker.CheckDataIntegrity("testrepo")
+	require.NoError(t, err, "third check failed")
 
 	history := checker.GetHistory(10)
 	assert.Len(t, history, 3, "expected 3 history entries")
@@ -235,7 +243,8 @@ func TestRecordPersistence(t *testing.T) {
 	sig, _ := crypto.Sign(privKey, hash)
 	record.Signature = hex.EncodeToString(sig)
 
-	checker1.AddVerificationRecord(record, pubKey)
+	err := checker1.AddVerificationRecord(record, pubKey)
+	require.NoError(t, err, "failed to add verification record")
 
 	// Create new checker (should load persisted records)
 	checker2, _ := NewChecker(tmpDir)

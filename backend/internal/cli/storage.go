@@ -59,7 +59,7 @@ func init() {
 	sf.Bool("integrity", true, "Enable integrity checking")
 	sf.String("integrity-interval", "24h", "Integrity check interval")
 
-	storageServeCmd.MarkFlagRequired("path")
+	_ = storageServeCmd.MarkFlagRequired("path")
 
 	// Add subcommands
 	storageCmd.AddCommand(storageServeCmd)
@@ -125,14 +125,14 @@ func runStorageServe(ctx *runner.CommandContext, cmd *cobra.Command, args []stri
 	// Health endpoint
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"status":"ok"}`))
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 
 	// Status endpoint
 	mux.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
 		status := opts.StorageServer.Status()
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"running":` + boolStr(status.Running) +
+		_, _ = w.Write([]byte(`{"running":` + boolStr(status.Running) +
 			`,"appendOnly":` + boolStr(status.AppendOnly) +
 			`,"usedBytes":` + int64Str(status.UsedBytes) +
 			`,"diskUsagePct":` + intStr(status.DiskUsagePct) + `}`))
@@ -155,7 +155,7 @@ func runStorageServe(ctx *runner.CommandContext, cmd *cobra.Command, args []stri
 				return
 			}
 			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`{"passed":` + boolStr(result.Passed) +
+			_, _ = w.Write([]byte(`{"passed":` + boolStr(result.Passed) +
 				`,"totalFiles":` + int64Str(int64(result.TotalFiles)) +
 				`,"corruptFiles":` + int64Str(int64(result.CorruptFiles)) + `}`))
 		})

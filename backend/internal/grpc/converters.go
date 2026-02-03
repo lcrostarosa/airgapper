@@ -10,7 +10,6 @@ import (
 	"github.com/lcrostarosa/airgapper/backend/internal/consent"
 	"github.com/lcrostarosa/airgapper/backend/internal/crypto"
 	"github.com/lcrostarosa/airgapper/backend/internal/integrity"
-	"github.com/lcrostarosa/airgapper/backend/internal/storage"
 )
 
 // mapSlice converts a slice of type T to a slice of type R using the provided converter function.
@@ -223,34 +222,6 @@ func toProtoDeletionRequests(dels []*consent.DeletionRequest) []*airgapperv1.Del
 }
 
 // ============================================================================
-// Storage Converters
-// ============================================================================
-
-func toProtoStorageStatus(status storage.Status) *airgapperv1.GetStorageStatusResponse {
-	var startTime *timestamppb.Timestamp
-	if !status.StartTime.IsZero() {
-		startTime = timestamppb.New(status.StartTime)
-	}
-
-	return &airgapperv1.GetStorageStatusResponse{
-		Configured:      true,
-		Running:         status.Running,
-		StartTime:       startTime,
-		BasePath:        status.BasePath,
-		AppendOnly:      status.AppendOnly,
-		QuotaBytes:      status.QuotaBytes,
-		UsedBytes:       status.UsedBytes,
-		RequestCount:    status.RequestCount,
-		HasPolicy:       status.HasPolicy,
-		PolicyId:        status.PolicyID,
-		MaxDiskUsagePct: int32(status.MaxDiskUsagePct),
-		DiskUsagePct:    int32(status.DiskUsagePct),
-		DiskFreeBytes:   status.DiskFreeBytes,
-		DiskTotalBytes:  status.DiskTotalBytes,
-	}
-}
-
-// ============================================================================
 // Integrity Converters
 // ============================================================================
 
@@ -270,30 +241,6 @@ func toProtoIntegrityCheckResult(r *integrity.CheckResult) *airgapperv1.Integrit
 	}
 }
 
-func toProtoVerificationConfig(cfg *integrity.VerificationConfig) *airgapperv1.GetVerificationConfigResponse {
-	if cfg == nil {
-		return nil
-	}
-
-	result := &airgapperv1.GetVerificationConfigResponse{
-		Enabled:             cfg.Enabled,
-		Interval:            cfg.Interval,
-		CheckType:           cfg.CheckType,
-		RepoName:            cfg.RepoName,
-		SnapshotId:          cfg.SnapshotID,
-		AlertOnCorruption:   cfg.AlertOnCorruption,
-		AlertWebhook:        cfg.AlertWebhook,
-		ConsecutiveFailures: int32(cfg.ConsecutiveFailures),
-		LastResult:          toProtoIntegrityCheckResult(cfg.LastResult),
-	}
-
-	if cfg.LastCheck != nil {
-		result.LastCheck = timestamppb.New(*cfg.LastCheck)
-	}
-
-	return result
-}
-
 // ============================================================================
 // Timestamp Helpers
 // ============================================================================
@@ -303,11 +250,4 @@ func timeToTimestamp(t time.Time) *timestamppb.Timestamp {
 		return nil
 	}
 	return timestamppb.New(t)
-}
-
-func timePointerToTimestamp(t *time.Time) *timestamppb.Timestamp {
-	if t == nil || t.IsZero() {
-		return nil
-	}
-	return timestamppb.New(*t)
 }

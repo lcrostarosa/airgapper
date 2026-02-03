@@ -261,7 +261,7 @@ func BuildLegacySSSConfig(t *testing.T, sssFixture *SSSFixture) *ConfigFixture {
 		},
 	}
 	ownerData, _ := json.MarshalIndent(ownerCfg, "", "  ")
-	os.WriteFile(filepath.Join(ownerDir, "config.json"), ownerData, 0600)
+	_ = os.WriteFile(filepath.Join(ownerDir, "config.json"), ownerData, 0600)
 
 	// Host config
 	hostCfg := map[string]interface{}{
@@ -276,7 +276,7 @@ func BuildLegacySSSConfig(t *testing.T, sssFixture *SSSFixture) *ConfigFixture {
 		},
 	}
 	hostData, _ := json.MarshalIndent(hostCfg, "", "  ")
-	os.WriteFile(filepath.Join(hostDir, "config.json"), hostData, 0600)
+	_ = os.WriteFile(filepath.Join(hostDir, "config.json"), hostData, 0600)
 
 	cfg, _ := config.Load(ownerDir)
 	return &ConfigFixture{

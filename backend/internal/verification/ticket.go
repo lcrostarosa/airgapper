@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/lcrostarosa/airgapper/backend/internal/crypto"
+	"github.com/lcrostarosa/airgapper/backend/internal/logging"
 )
 
 // TicketTargetType defines what a deletion ticket authorizes.
@@ -124,7 +125,9 @@ func (tm *TicketManager) load() error {
 	// Load usage records
 	usageData, err := os.ReadFile(tm.usagePath())
 	if err == nil {
-		json.Unmarshal(usageData, &tm.usageRecords)
+		if unmarshalErr := json.Unmarshal(usageData, &tm.usageRecords); unmarshalErr != nil {
+			logging.Warn("Failed to unmarshal usage records", logging.Err(unmarshalErr))
+		}
 	}
 
 	return nil
@@ -491,7 +494,9 @@ func (tm *TicketManager) CleanupExpired() int {
 	}
 
 	if removed > 0 {
-		tm.save()
+		if err := tm.save(); err != nil {
+			logging.Warn("Failed to save after cleanup", logging.Err(err))
+		}
 	}
 
 	return removed

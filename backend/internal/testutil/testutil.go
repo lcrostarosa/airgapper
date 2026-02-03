@@ -79,7 +79,7 @@ func generateRandomBytes(r *mrand.Rand, n int) []byte {
 	if r == nil {
 		// Use crypto/rand for secure randomness
 		b := make([]byte, n)
-		rand.Read(b)
+		_, _ = rand.Read(b)
 		return b
 	}
 	b := make([]byte, n)

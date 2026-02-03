@@ -96,7 +96,8 @@ func TestTicketManager_FileTicket(t *testing.T) {
 	}
 
 	ticket, _ := CreateTicket(ownerPriv, ownerKeyID, target, "cleanup", 7)
-	tm.RegisterTicket(ticket)
+	err = tm.RegisterTicket(ticket)
+	require.NoError(t, err, "failed to register ticket")
 
 	// Should match exact path
 	_, err = tm.ValidateDelete("/repo/config", "")
@@ -130,7 +131,8 @@ func TestTicketManager_RecordUsage(t *testing.T) {
 		SnapshotIDs: []string{"snap1"},
 	}
 	ticket, _ := CreateTicket(ownerPriv, ownerKeyID, target, "test", 7)
-	tm.RegisterTicket(ticket)
+	err = tm.RegisterTicket(ticket)
+	require.NoError(t, err, "failed to register ticket")
 
 	// Record usage
 	record, err := tm.RecordUsage(ticket.ID, []string{"/repo/snapshots/snap1"})
@@ -221,7 +223,8 @@ func TestTicketManager_ListTickets(t *testing.T) {
 			SnapshotIDs: []string{"snap"},
 		}
 		ticket, _ := CreateTicket(ownerPriv, ownerKeyID, target, "test", 7)
-		tm.RegisterTicket(ticket)
+		err = tm.RegisterTicket(ticket)
+		require.NoError(t, err, "failed to register ticket %d", i)
 	}
 
 	tickets := tm.ListTickets(true)

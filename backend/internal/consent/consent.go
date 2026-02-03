@@ -10,6 +10,7 @@ import (
 	"time"
 
 	apperrors "github.com/lcrostarosa/airgapper/backend/internal/errors"
+	"github.com/lcrostarosa/airgapper/backend/internal/logging"
 )
 
 // RequestStatus represents the status of a restore request
@@ -138,7 +139,9 @@ func (m *Manager) GetRequest(id string) (*RestoreRequest, error) {
 	// Check expiry
 	if req.Status == StatusPending && time.Now().After(req.ExpiresAt) {
 		req.Status = StatusExpired
-		m.saveRequest(&req)
+		if err := m.saveRequest(&req); err != nil {
+			logging.Warn("Failed to save expired request", logging.Err(err))
+		}
 	}
 
 	return &req, nil
@@ -188,7 +191,9 @@ func (m *Manager) Approve(id, approver string, shareData []byte) error {
 
 	if time.Now().After(req.ExpiresAt) {
 		req.Status = StatusExpired
-		m.saveRequest(req)
+		if err := m.saveRequest(req); err != nil {
+			logging.Warn("Failed to save expired request", logging.Err(err))
+		}
 		return apperrors.ErrRequestExpired
 	}
 
@@ -275,7 +280,9 @@ func (m *Manager) AddSignature(id, keyHolderID, keyHolderName string, signature 
 
 	if time.Now().After(req.ExpiresAt) {
 		req.Status = StatusExpired
-		m.saveRequest(req)
+		if err := m.saveRequest(req); err != nil {
+			logging.Warn("Failed to save expired request", logging.Err(err))
+		}
 		return apperrors.ErrRequestExpired
 	}
 
@@ -376,7 +383,9 @@ func (m *Manager) GetDeletionRequest(id string) (*DeletionRequest, error) {
 	// Check expiry
 	if req.Status == StatusPending && time.Now().After(req.ExpiresAt) {
 		req.Status = StatusExpired
-		m.saveDeletionRequest(&req)
+		if err := m.saveDeletionRequest(&req); err != nil {
+			logging.Warn("Failed to save expired deletion request", logging.Err(err))
+		}
 	}
 
 	return &req, nil
@@ -426,7 +435,9 @@ func (m *Manager) ApproveDeletion(id, keyHolderID, keyHolderName string, signatu
 
 	if time.Now().After(req.ExpiresAt) {
 		req.Status = StatusExpired
-		m.saveDeletionRequest(req)
+		if err := m.saveDeletionRequest(req); err != nil {
+			logging.Warn("Failed to save expired deletion request", logging.Err(err))
+		}
 		return apperrors.ErrRequestExpired
 	}
 

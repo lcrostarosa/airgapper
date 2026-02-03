@@ -237,7 +237,7 @@ func (msc *ManagedScheduledChecker) startScheduler() error {
 
 	// Set up the callback to record results and trigger alerts
 	msc.scheduler.SetCorruptionCallback(func(result *CheckResult) {
-		msc.configManager.RecordCheck(result)
+		_ = msc.configManager.RecordCheck(result)
 
 		if config.AlertOnCorruption {
 			msc.sendAlert(result)
@@ -247,7 +247,7 @@ func (msc *ManagedScheduledChecker) startScheduler() error {
 	// Also record successful checks
 	origCallback := msc.scheduler.onCorruption
 	msc.scheduler.SetCorruptionCallback(func(result *CheckResult) {
-		msc.configManager.RecordCheck(result)
+		_ = msc.configManager.RecordCheck(result)
 		if !result.Passed && origCallback != nil {
 			origCallback(result)
 		}
@@ -259,7 +259,7 @@ func (msc *ManagedScheduledChecker) startScheduler() error {
 
 func (msc *ManagedScheduledChecker) restartScheduler() {
 	msc.Stop()
-	msc.Start()
+	_ = msc.Start()
 }
 
 func (msc *ManagedScheduledChecker) sendAlert(result *CheckResult) {
@@ -300,7 +300,7 @@ func (msc *ManagedScheduledChecker) RunManualCheck(checkType string) (*CheckResu
 		return nil, err
 	}
 
-	msc.configManager.RecordCheck(result)
+	_ = msc.configManager.RecordCheck(result)
 	return result, nil
 }
 

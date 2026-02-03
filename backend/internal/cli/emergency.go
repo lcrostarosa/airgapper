@@ -65,7 +65,7 @@ Use this when a custodian has lost their share and needs a new copy.`,
 
 func init() {
 	exportShareCmd.Flags().Int("index", 0, "Share index to export (required)")
-	exportShareCmd.MarkFlagRequired("index")
+	_ = exportShareCmd.MarkFlagRequired("index")
 	rootCmd.AddCommand(exportShareCmd)
 }
 

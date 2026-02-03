@@ -76,8 +76,10 @@ func TestPolicyTamperDetection(t *testing.T) {
 	)
 
 	// Sign by both
-	p.SignAsOwner(ownerPriv)
-	p.SignAsHost(hostPriv)
+	err := p.SignAsOwner(ownerPriv)
+	require.NoError(t, err, "owner sign failed")
+	err = p.SignAsHost(hostPriv)
+	require.NoError(t, err, "host sign failed")
 
 	// Verify works
 	require.NoError(t, p.Verify(), "initial verification failed")
@@ -192,8 +194,10 @@ func TestPolicyJSON(t *testing.T) {
 	p.RetentionDays = 90
 	p.DeletionMode = DeletionOwnerOnly
 
-	p.SignAsOwner(ownerPriv)
-	p.SignAsHost(hostPriv)
+	err := p.SignAsOwner(ownerPriv)
+	require.NoError(t, err, "owner sign failed")
+	err = p.SignAsHost(hostPriv)
+	require.NoError(t, err, "host sign failed")
 
 	// Serialize
 	data, err := p.ToJSON()

@@ -124,7 +124,7 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request, repo strin
 			return
 		}
 		w.Header().Set("Content-Type", "application/octet-stream")
-		w.Write(data)
+		_, _ = w.Write(data)
 
 	case http.MethodPost:
 		// Config can only be created once
@@ -192,7 +192,7 @@ func (s *Server) handleList(w http.ResponseWriter, r *http.Request, repo, fileTy
 
 	if fileType == "data" {
 		// Data files are stored in subdirectories by first 2 chars of hash
-		filepath.Walk(dirPath, func(path string, info os.FileInfo, err error) error {
+		_ = filepath.Walk(dirPath, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return nil
 			}
@@ -283,7 +283,7 @@ func (s *Server) handleFile(w http.ResponseWriter, r *http.Request, repo, fileTy
 		info, _ := file.Stat()
 		w.Header().Set("Content-Type", "application/octet-stream")
 		w.Header().Set("Content-Length", fmt.Sprintf("%d", info.Size()))
-		io.Copy(w, file)
+		_, _ = io.Copy(w, file)
 
 	case http.MethodPost:
 		contentLength := r.ContentLength

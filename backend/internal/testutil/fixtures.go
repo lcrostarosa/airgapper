@@ -26,7 +26,7 @@ func NewPasswordFixture(opts ...FixtureOption) *PasswordFixture {
 func NewPasswordFixtureWithSize(size int, r interface{ Read([]byte) (int, error) }) *PasswordFixture {
 	raw := make([]byte, size)
 	if r != nil {
-		r.Read(raw)
+		_, _ = r.Read(raw)
 	}
 	hexStr := hex.EncodeToString(raw)
 	hash := sha256.Sum256([]byte(hexStr))

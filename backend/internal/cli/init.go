@@ -46,8 +46,8 @@ func init() {
 	// Required
 	f.StringP("name", "n", "", "Your name/identifier")
 	f.StringP("repo", "r", "", "Restic repository URL")
-	initCmd.MarkFlagRequired("name")
-	initCmd.MarkFlagRequired("repo")
+	_ = initCmd.MarkFlagRequired("name")
+	_ = initCmd.MarkFlagRequired("repo")
 
 	// SSS mode options
 	f.Int("recovery-shares", 2, "Total shares to create")
@@ -316,6 +316,6 @@ func parseDays(s string) int {
 	}
 	s = strings.TrimSuffix(s, "d")
 	var days int
-	fmt.Sscanf(s, "%d", &days)
+	_, _ = fmt.Sscanf(s, "%d", &days)
 	return days
 }

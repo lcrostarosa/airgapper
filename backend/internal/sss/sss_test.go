@@ -181,7 +181,8 @@ func TestCombineErrors(t *testing.T) {
 func TestRandomSecrets(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		secret := make([]byte, 32)
-		rand.Read(secret)
+		_, err := rand.Read(secret)
+		require.NoError(t, err, "failed to generate random secret")
 
 		shares, err := Split(secret, 2, 2)
 		require.NoError(t, err, "Split failed")
@@ -220,21 +221,21 @@ func TestGF256Operations(t *testing.T) {
 
 func BenchmarkSplit(b *testing.B) {
 	secret := make([]byte, 64)
-	rand.Read(secret)
+	_, _ = rand.Read(secret)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		Split(secret, 2, 2)
+		_, _ = Split(secret, 2, 2)
 	}
 }
 
 func BenchmarkCombine(b *testing.B) {
 	secret := make([]byte, 64)
-	rand.Read(secret)
+	_, _ = rand.Read(secret)
 	shares, _ := Split(secret, 2, 2)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		Combine(shares)
+		_, _ = Combine(shares)
 	}
 }

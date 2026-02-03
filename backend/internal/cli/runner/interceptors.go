@@ -101,7 +101,9 @@ func RecordActivity() Interceptor {
 		err := next()
 		if err == nil && ctx.Config != nil && ctx.Config.Emergency != nil {
 			ctx.Config.Emergency.GetDeadManSwitch().RecordActivity()
-			ctx.Config.Save()
+			if saveErr := ctx.Config.Save(); saveErr != nil {
+				logging.Warn("Failed to save config after recording activity", logging.Err(saveErr))
+			}
 		}
 		return err
 	}

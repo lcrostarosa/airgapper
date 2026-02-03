@@ -45,7 +45,8 @@ func TestUpgrade_LegacySSSConfig(t *testing.T) {
 	// Write legacy config
 	configPath := filepath.Join(tmpDir, "config.json")
 	data, _ := json.MarshalIndent(legacyConfig, "", "  ")
-	os.WriteFile(configPath, data, 0600)
+	err := os.WriteFile(configPath, data, 0600)
+	require.NoError(t, err, "failed to write legacy config")
 
 	// Load with current code
 	cfg, err := config.Load(tmpDir)
@@ -86,7 +87,8 @@ func TestUpgrade_LegacyHostConfig(t *testing.T) {
 
 	configPath := filepath.Join(tmpDir, "config.json")
 	data, _ := json.MarshalIndent(legacyConfig, "", "  ")
-	os.WriteFile(configPath, data, 0600)
+	err := os.WriteFile(configPath, data, 0600)
+	require.NoError(t, err, "failed to write legacy host config")
 
 	cfg, err := config.Load(tmpDir)
 	require.NoError(t, err, "Failed to load legacy host config")
@@ -140,7 +142,8 @@ func TestUpgrade_ConsensusConfigWithNewFields(t *testing.T) {
 
 	configPath := filepath.Join(tmpDir, "config.json")
 	data, _ := json.MarshalIndent(consensusConfig, "", "  ")
-	os.WriteFile(configPath, data, 0600)
+	err := os.WriteFile(configPath, data, 0600)
+	require.NoError(t, err, "failed to write consensus config")
 
 	cfg, err := config.Load(tmpDir)
 	require.NoError(t, err, "Failed to load consensus config")
@@ -177,7 +180,8 @@ func TestUpgrade_SSSKeysStillWork(t *testing.T) {
 		"share_index": shares[0].Index,
 	}
 	data1, _ := json.MarshalIndent(ownerConfig, "", "  ")
-	os.WriteFile(filepath.Join(tmpDir1, "config.json"), data1, 0600)
+	err = os.WriteFile(filepath.Join(tmpDir1, "config.json"), data1, 0600)
+	require.NoError(t, err, "failed to write owner config")
 
 	// Host's config
 	hostConfig := map[string]interface{}{
@@ -188,7 +192,8 @@ func TestUpgrade_SSSKeysStillWork(t *testing.T) {
 		"share_index": shares[1].Index,
 	}
 	data2, _ := json.MarshalIndent(hostConfig, "", "  ")
-	os.WriteFile(filepath.Join(tmpDir2, "config.json"), data2, 0600)
+	err = os.WriteFile(filepath.Join(tmpDir2, "config.json"), data2, 0600)
+	require.NoError(t, err, "failed to write host config")
 
 	// Load configs with "new" code
 	ownerCfg, _ := config.Load(tmpDir1)
@@ -210,7 +215,8 @@ func TestUpgrade_SSSKeysStillWork(t *testing.T) {
 func TestUpgrade_ExistingRestoreRequests(t *testing.T) {
 	tmpDir := t.TempDir()
 	requestsDir := filepath.Join(tmpDir, "requests")
-	os.MkdirAll(requestsDir, 0700)
+	err := os.MkdirAll(requestsDir, 0700)
+	require.NoError(t, err, "failed to create requests dir")
 
 	// Simulate an old restore request format
 	oldRequest := map[string]interface{}{
@@ -227,7 +233,8 @@ func TestUpgrade_ExistingRestoreRequests(t *testing.T) {
 
 	requestPath := filepath.Join(requestsDir, "abc123def456.json")
 	data, _ := json.MarshalIndent(oldRequest, "", "  ")
-	os.WriteFile(requestPath, data, 0600)
+	err = os.WriteFile(requestPath, data, 0600)
+	require.NoError(t, err, "failed to write old request")
 
 	// Load with current consent manager
 	mgr := consent.NewManager(tmpDir)
@@ -266,13 +273,16 @@ func TestUpgrade_ExistingPolicyFormat(t *testing.T) {
 	)
 	p.RetentionDays = 30
 	p.DeletionMode = policy.DeletionBothRequired
-	p.SignAsOwner(ownerPriv)
-	p.SignAsHost(hostPriv)
+	err := p.SignAsOwner(ownerPriv)
+	require.NoError(t, err, "owner sign failed")
+	err = p.SignAsHost(hostPriv)
+	require.NoError(t, err, "host sign failed")
 
 	// Save to disk
 	policyPath := filepath.Join(tmpDir, "policy.json")
 	data, _ := p.ToJSON()
-	os.WriteFile(policyPath, data, 0600)
+	err = os.WriteFile(policyPath, data, 0600)
+	require.NoError(t, err, "failed to write policy file")
 
 	// Load and verify
 	loadedData, _ := os.ReadFile(policyPath)
@@ -295,7 +305,8 @@ func TestUpgrade_StorageDataIntact(t *testing.T) {
 	repoPath := filepath.Join(tmpDir, "backup-repo")
 	dirs := []string{"data", "keys", "snapshots", "index", "locks"}
 	for _, dir := range dirs {
-		os.MkdirAll(filepath.Join(repoPath, dir), 0755)
+		err := os.MkdirAll(filepath.Join(repoPath, dir), 0755)
+		require.NoError(t, err, "failed to create dir %s", dir)
 	}
 
 	// Create some "old" data files
@@ -305,15 +316,19 @@ func TestUpgrade_StorageDataIntact(t *testing.T) {
 
 	// Data files use subdirectory structure
 	dataDir := filepath.Join(repoPath, "data", hashHex[:2])
-	os.MkdirAll(dataDir, 0755)
-	os.WriteFile(filepath.Join(dataDir, hashHex), testData, 0644)
+	err := os.MkdirAll(dataDir, 0755)
+	require.NoError(t, err, "failed to create data dir")
+	err = os.WriteFile(filepath.Join(dataDir, hashHex), testData, 0644)
+	require.NoError(t, err, "failed to write test data")
 
 	// Config file
-	os.WriteFile(filepath.Join(repoPath, "config"), []byte("repo-config"), 0644)
+	err = os.WriteFile(filepath.Join(repoPath, "config"), []byte("repo-config"), 0644)
+	require.NoError(t, err, "failed to write config file")
 
 	// Key file
 	keyHash := sha256.Sum256([]byte("key-data"))
-	os.WriteFile(filepath.Join(repoPath, "keys", hex.EncodeToString(keyHash[:])), []byte("key-data"), 0644)
+	err = os.WriteFile(filepath.Join(repoPath, "keys", hex.EncodeToString(keyHash[:])), []byte("key-data"), 0644)
+	require.NoError(t, err, "failed to write key file")
 
 	// Create storage server with "new" code pointing to old data
 	s, err := storage.NewServer(storage.Config{
@@ -385,7 +400,8 @@ func TestUpgrade_ConfigSavePreservesUnknownFields(t *testing.T) {
 
 	configPath := filepath.Join(tmpDir, "config.json")
 	data, _ := json.MarshalIndent(futureConfig, "", "  ")
-	os.WriteFile(configPath, data, 0600)
+	err := os.WriteFile(configPath, data, 0600)
+	require.NoError(t, err, "failed to write future config")
 
 	// Load with current code
 	cfg, err := config.Load(tmpDir)
@@ -409,7 +425,7 @@ func TestUpgrade_ConfigSavePreservesUnknownFields(t *testing.T) {
 	// Check the raw JSON to see if unknown fields were preserved
 	rawData, _ := os.ReadFile(configPath)
 	var rawMap map[string]interface{}
-	json.Unmarshal(rawData, &rawMap)
+	_ = json.Unmarshal(rawData, &rawMap)
 
 	// Document current behavior: unknown fields are lost
 	if _, ok := rawMap["future_field"]; ok {

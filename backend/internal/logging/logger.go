@@ -74,7 +74,7 @@ func initLogger(cfg Config) error {
 // InitDefault initializes with default configuration
 func InitDefault() {
 	if logger == nil {
-		Init(DefaultConfig())
+		_ = Init(DefaultConfig())
 	}
 }
 

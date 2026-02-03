@@ -39,7 +39,6 @@ type Scheduler struct {
 	backupFunc func() error
 	retry      *RetryStrategy
 	callbacks  *SchedulerCallbacks
-	paths      []string
 	stop       chan struct{}
 	wg         sync.WaitGroup
 	mu         sync.Mutex

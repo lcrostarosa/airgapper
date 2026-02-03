@@ -146,7 +146,8 @@ func TestAuditChain_Export(t *testing.T) {
 
 	// Record some entries
 	for i := 0; i < 3; i++ {
-		chain.Record("CREATE", "/test", "test", true, "")
+		_, err = chain.Record("CREATE", "/test", "test", true, "")
+		require.NoError(t, err, "failed to record entry")
 	}
 
 	// Export

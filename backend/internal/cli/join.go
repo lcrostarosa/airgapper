@@ -33,8 +33,8 @@ func init() {
 
 	f.StringP("name", "n", "", "Your name/identifier")
 	f.StringP("repo", "r", "", "Restic repository URL")
-	joinCmd.MarkFlagRequired("name")
-	joinCmd.MarkFlagRequired("repo")
+	_ = joinCmd.MarkFlagRequired("name")
+	_ = joinCmd.MarkFlagRequired("repo")
 
 	// SSS mode
 	f.StringP("share", "s", "", "Hex-encoded key share from owner")

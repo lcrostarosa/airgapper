@@ -132,10 +132,11 @@ func TestDeletionDuplicateApproval(t *testing.T) {
 	)
 
 	// First approval
-	m.ApproveDeletion(req.ID, "alice-key", "Alice", []byte("sig"))
+	err := m.ApproveDeletion(req.ID, "alice-key", "Alice", []byte("sig"))
+	require.NoError(t, err, "first approval failed")
 
 	// Duplicate approval should fail
-	err := m.ApproveDeletion(req.ID, "alice-key", "Alice", []byte("sig2"))
+	err = m.ApproveDeletion(req.ID, "alice-key", "Alice", []byte("sig2"))
 	assert.Error(t, err, "Duplicate approval should fail")
 }
 
@@ -157,7 +158,8 @@ func TestMarkDeletionExecuted(t *testing.T) {
 	assert.Error(t, err, "Should not be able to mark unapproved deletion as executed")
 
 	// Approve
-	m.ApproveDeletion(req.ID, "alice-key", "Alice", []byte("sig"))
+	err = m.ApproveDeletion(req.ID, "alice-key", "Alice", []byte("sig"))
+	require.NoError(t, err, "approval failed")
 
 	// Now can mark as executed
 	require.NoError(t, m.MarkDeletionExecuted(req.ID), "MarkDeletionExecuted failed")

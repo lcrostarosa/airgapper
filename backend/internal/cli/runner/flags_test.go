@@ -5,12 +5,13 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestFlagSetString(t *testing.T) {
 	cmd := &cobra.Command{}
 	cmd.Flags().String("name", "default", "test flag")
-	cmd.Flags().Set("name", "alice")
+	require.NoError(t, cmd.Flags().Set("name", "alice"))
 
 	flags := Flags(cmd)
 	val := flags.String("name")
@@ -22,7 +23,7 @@ func TestFlagSetString(t *testing.T) {
 func TestFlagSetInt(t *testing.T) {
 	cmd := &cobra.Command{}
 	cmd.Flags().Int("count", 0, "test flag")
-	cmd.Flags().Set("count", "42")
+	require.NoError(t, cmd.Flags().Set("count", "42"))
 
 	flags := Flags(cmd)
 	val := flags.Int("count")
@@ -34,7 +35,7 @@ func TestFlagSetInt(t *testing.T) {
 func TestFlagSetBool(t *testing.T) {
 	cmd := &cobra.Command{}
 	cmd.Flags().Bool("verbose", false, "test flag")
-	cmd.Flags().Set("verbose", "true")
+	require.NoError(t, cmd.Flags().Set("verbose", "true"))
 
 	flags := Flags(cmd)
 	val := flags.Bool("verbose")
@@ -46,7 +47,7 @@ func TestFlagSetBool(t *testing.T) {
 func TestFlagSetStringSlice(t *testing.T) {
 	cmd := &cobra.Command{}
 	cmd.Flags().StringSlice("items", nil, "test flag")
-	cmd.Flags().Set("items", "a,b,c")
+	require.NoError(t, cmd.Flags().Set("items", "a,b,c"))
 
 	flags := Flags(cmd)
 	val := flags.StringSlice("items")
@@ -60,7 +61,7 @@ func TestFlagSetChanged(t *testing.T) {
 	cmd := &cobra.Command{}
 	cmd.Flags().String("changed", "default", "test flag")
 	cmd.Flags().String("unchanged", "default", "test flag")
-	cmd.Flags().Set("changed", "new")
+	require.NoError(t, cmd.Flags().Set("changed", "new"))
 
 	flags := Flags(cmd)
 
@@ -102,7 +103,7 @@ func TestFlagSetNoErrors(t *testing.T) {
 func TestFlagSetInt64(t *testing.T) {
 	cmd := &cobra.Command{}
 	cmd.Flags().Int64("size", 0, "test flag")
-	cmd.Flags().Set("size", "9223372036854775807") // max int64
+	require.NoError(t, cmd.Flags().Set("size", "9223372036854775807")) // max int64
 
 	flags := Flags(cmd)
 	val := flags.Int64("size")

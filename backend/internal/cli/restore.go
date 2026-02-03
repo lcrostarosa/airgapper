@@ -25,8 +25,8 @@ func init() {
 	f := restoreCmd.Flags()
 	f.String("request", "", "Request ID (required)")
 	f.String("target", "", "Restore target directory (required)")
-	restoreCmd.MarkFlagRequired("request")
-	restoreCmd.MarkFlagRequired("target")
+	_ = restoreCmd.MarkFlagRequired("request")
+	_ = restoreCmd.MarkFlagRequired("target")
 	rootCmd.AddCommand(restoreCmd)
 }
 

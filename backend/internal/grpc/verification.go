@@ -2,7 +2,6 @@ package grpc
 
 import (
 	"context"
-	"time"
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -315,7 +314,3 @@ func ticketToProto(t *verification.DeletionTicket) *airgapperv1.Ticket {
 	}
 }
 
-// generateCheckpointID creates a unique checkpoint ID
-func generateCheckpointID() string {
-	return "chk-" + time.Now().Format("20060102150405")
-}

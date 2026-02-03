@@ -410,7 +410,7 @@ func (c *Checker) CreateVerificationRecord(repoName, snapshotID, ownerKeyID stri
 func (c *Checker) computeDataMerkleRoot(dataPath string) (string, int) {
 	var names []string
 
-	filepath.Walk(dataPath, func(path string, info os.FileInfo, err error) error {
+	_ = filepath.Walk(dataPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
 			return nil
 		}
@@ -451,7 +451,7 @@ func (c *Checker) computeDataMerkleRoot(dataPath string) (string, int) {
 // countDataFiles counts files in the data directory
 func (c *Checker) countDataFiles(dataPath string) int {
 	count := 0
-	filepath.Walk(dataPath, func(path string, info os.FileInfo, err error) error {
+	_ = filepath.Walk(dataPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
 			return nil
 		}
