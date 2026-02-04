@@ -1,0 +1,156 @@
+# Ralph Progress Log
+Started: Tue Feb  3 13:21:02 MST 2026
+---
+
+## Codebase Patterns
+- Use `testify/assert` and `testify/require` for test assertions (project standard)
+- Tests should use table-driven tests with `t.Run()` for subtests
+- Ed25519 key sizes: PublicKeySize=32, PrivateKeySize=64, SignatureSize=64
+- Crypto tests should cover: round-trip, invalid sizes, determinism, tamper detection
+- Config tests use t.TempDir() for isolated directories; apperrors package for sentinel errors
+- Git commands must run from project root (/Volumes/Secondary/docker/airgapper), not backend subdir
+
+---
+
+## 2026-02-03 - Story 1: Add unit tests for crypto package
+- **What was implemented**: Comprehensive test suite for `internal/crypto/keys.go`
+- **Files changed**:
+  - Created `backend/internal/crypto/keys_test.go` (405 lines)
+- **Test coverage**: 91.1% (exceeds 80% requirement)
+- **Tests include**:
+  - GenerateKeyPair: uniqueness, size validation, integration
+  - Sign/Verify: round-trip, invalid keys, tampered data
+  - KeyID: determinism, hex format
+  - RestoreRequestSignData.Hash: canonical ordering, path sorting
+  - RestoreRequestSignData.Sign/Verify: round-trip, path order independence
+  - Encode/Decode for public and private keys: round-trip, error handling
+- **Learnings for future iterations:**
+  - The crypto package uses Ed25519 for all signing operations
+  - RestoreRequestSignData.Hash() sorts paths for canonical ordering before hashing
+  - Hash() creates a copy of paths to avoid modifying the original slice
+  - KeyID returns first 16 hex chars of SHA256 hash of public key
+---
+
+## 2026-02-03 - Story 2: Add unit tests for config package
+- **What was implemented**: Comprehensive test suite for `internal/config/config.go`
+- **Files changed**:
+  - Created `backend/internal/config/config_test.go` (745 lines)
+- **Test coverage**: 95.5% (exceeds 60% requirement)
+- **Tests include**:
+  - Load: valid config, missing file (ErrNotInitialized), invalid JSON, default dir, consensus settings, peer info (SSS mode), backup settings, storage settings
+  - Exists: config exists/not exists cases, default dir
+  - Save: writes to disk, creates directory if missing, sets correct permissions (0600), uses default dir
+  - Role methods: IsOwner, IsHost, empty role
+  - Share methods: SharePath, SaveShare, LoadShare (present/missing)
+  - Schedule methods: SetSchedule with/without paths
+  - Mode detection: UsesSSSMode, UsesConsensusMode, neither, consensus takes precedence
+  - Consensus methods: AddKeyHolder (success, no consensus, duplicate), GetKeyHolder (found, not found, no consensus), CanRestoreDirectly, RequiredApprovals
+  - Emergency methods: HasEmergencyConfig, EnsureEmergency
+  - Full round-trip test with all config fields
+- **Learnings for future iterations:**
+  - Config uses apperrors package for sentinel errors (ErrNotInitialized, ErrNoLocalShare, etc.)
+  - Config file is saved with 0600 permissions for security (owner-only read/write)
+  - UsesSSSMode() returns true only when LocalShare is present AND Consensus is nil
+  - Consensus mode takes precedence over SSS mode if both are configured
+  - Config tests should use t.TempDir() for isolated test directories
+---
+
+## 2026-02-03 - Story 3: Split internal/integrity/checker.go
+- **What was implemented**: Split the 588-line checker.go into 7 focused files
+- **Files changed**:
+  - Modified `backend/internal/integrity/checker.go` (now 101 lines) - Core Checker struct and CheckDataIntegrity
+  - Created `backend/internal/integrity/checks.go` (120 lines) - QuickCheck and VerifyAgainstRecord
+  - Created `backend/internal/integrity/history.go` (27 lines) - Check history management
+  - Created `backend/internal/integrity/merkle.go` (81 lines) - Merkle tree functions and file hashing
+  - Created `backend/internal/integrity/records.go` (167 lines) - Verification record management
+  - Created `backend/internal/integrity/scheduled.go` (90 lines) - ScheduledChecker for periodic checks
+  - Created `backend/internal/integrity/types.go` (41 lines) - CheckResult and VerificationRecord types
+- **Acceptance criteria verified**:
+  - 7 .go files in integrity package (plus pre-existing config.go makes 8 total)
+  - All split files under 200 lines
+  - All 18 tests pass
+  - Package API unchanged (all exports preserved)
+- **Learnings for future iterations:**
+  - When splitting large files, group by logical responsibility: types, main struct, methods by feature
+  - Package-level helper functions (like hashFile, computeDataMerkleRoot) can be kept unexported
+  - Method receivers still work across files in the same package
+  - Pre-existing files (like config.go) don't need to be split as part of checker.go split task
+---
+
+## 2026-02-03 - Story 4: Split internal/cli/emergency.go
+- **What was implemented**: Split the 560-line emergency.go into 5 focused files
+- **Files changed**:
+  - Deleted `backend/internal/cli/emergency.go` (560 lines)
+  - Created `backend/internal/cli/deadman_cmd.go` (47 lines) - Heartbeat command
+  - Created `backend/internal/cli/recovery_cmd.go` (73 lines) - Export-share command
+  - Created `backend/internal/cli/override_cmd.go` (182 lines) - Override setup, allow, deny, list, audit
+  - Created `backend/internal/cli/notify_cmd.go` (199 lines) - Provider add, remove, list, test
+  - Created `backend/internal/cli/notify_events_cmd.go` (101 lines) - Event configuration
+- **Acceptance criteria verified**:
+  - internal/cli/ now has separate files for emergency command groups
+  - All split files under 200 lines (max: 199)
+  - All tests pass
+  - CLI behavior unchanged (verified by build and test)
+- **Learnings for future iterations:**
+  - Cobra CLI commands can be split across files using package-level init() functions
+  - Each file can have its own init() to register subcommands with parent commands
+  - For notify commands, further split was needed (events into separate file) to stay under 200 lines
+  - Comments like "// --- Section ---" can be removed to save lines if needed
+---
+
+## 2026-02-03 - Story 5: Split internal/emergency/emergency.go
+- **What was implemented**: Split the 435-line emergency.go into 5 focused files
+- **Files changed**:
+  - Deleted `backend/internal/emergency/emergency.go` (435 lines)
+  - Created `backend/internal/emergency/config.go` (48 lines) - Main Config struct and accessor methods
+  - Created `backend/internal/emergency/recovery.go` (90 lines) - RecoveryConfig, Custodian, and methods
+  - Created `backend/internal/emergency/deadman.go` (86 lines) - DeadManSwitchConfig, TriggerAction, and methods
+  - Created `backend/internal/emergency/override.go` (109 lines) - OverrideConfig, OverrideType, and methods
+  - Created `backend/internal/emergency/notify.go` (102 lines) - NotifyConfig, Provider, EventConfig, and methods
+- **Acceptance criteria verified**:
+  - internal/emergency/ has 5 .go files (exceeds 4+ requirement)
+  - All files under 150 lines (max: 109)
+  - All tests pass
+  - Package API unchanged (all exported types/functions preserved)
+- **Learnings for future iterations:**
+  - Config types with method receivers can be split into separate files per type
+  - Keep the main aggregate struct (Config) in its own file with accessors
+  - Each config type file should contain: type definition, associated types, builder method on Config, methods on the type
+  - Nil-safe method patterns (check receiver for nil before accessing fields) are consistent throughout
+---
+
+## 2026-02-03 - Story 6: Improve consent package test coverage
+- **What was implemented**: Comprehensive test suite for `internal/consent` package
+- **Files changed**:
+  - Modified `backend/internal/consent/consent_test.go` (now 1271 lines, previously 191 lines)
+- **Test coverage**: 82.5% (exceeds 70% requirement)
+- **Tests include**:
+  - Manager: NewManager setup validation
+  - RestoreRequest: creation, get, list pending, approve, deny, paths, not found, not pending errors, expiration
+  - Consensus mode: CreateRequestWithConsensus, AddSignature, HasEnoughApprovals, GetApprovalProgress
+  - Signature errors: duplicate, not found, not pending, expired
+  - DeletionRequest: all deletion types, approve, deny, mark executed, expiration
+  - Request interface: GetID, GetStatus, SetStatus, GetExpiresAt, GetApprovals, AddApproval, GetRequiredApprovals
+  - RequestStore generic: Get, Save, List, ListPending, AddApproval, Deny, HasEnoughApprovals, GetApprovalProgress
+  - Concurrent access: concurrent request creation
+  - Edge cases: zero required approvals, empty paths, empty requester, approval timestamps, expiry duration validation
+- **Learnings for future iterations:**
+  - Consent package uses file-based storage without locking (requests saved as JSON files)
+  - GetRequest() marks expired requests as StatusExpired before returning
+  - This causes approval methods to return ErrRequestNotPending rather than ErrRequestExpired for expired requests
+  - RestoreRequest expiry is 24 hours; DeletionRequest expiry is 7 days
+  - Concurrent approvals to the same file can cause race conditions (in practice, approvals come via HTTP from different machines)
+  - Request interface allows generic handling of both RestoreRequest and DeletionRequest types
+---
+
+## 2026-02-03 - Story 7: Final validation - all tests pass
+- **What was verified**:
+  - `cd backend && go test ./...` passes with no failures
+  - `cd backend && go build ./...` passes
+  - golangci-lint not available on this system (no lint check performed)
+- **Test packages passing**: 12 packages with tests all pass
+- **Learnings for future iterations:**
+  - All stories in this PRD have been completed
+  - Test coverage improved: crypto (91.1%), config (95.5%), consent (82.5%)
+  - Large files split: integrity/checker.go, cli/emergency.go, emergency/emergency.go
+---

@@ -206,7 +206,7 @@ func (s *Server) handleList(w http.ResponseWriter, r *http.Request, repo, fileTy
 		if os.IsNotExist(err) {
 			// Return empty list for missing directory
 			w.Header().Set("Content-Type", "application/vnd.x.restic.rest.v2")
-			fmt.Fprint(w, "[]")
+			_, _ = fmt.Fprint(w, "[]")
 			return
 		}
 		if err != nil {
@@ -228,14 +228,14 @@ func (s *Server) handleList(w http.ResponseWriter, r *http.Request, repo, fileTy
 
 	// Build JSON response
 	w.Header().Set("Content-Type", "application/vnd.x.restic.rest.v2")
-	fmt.Fprint(w, "[")
+	_, _ = fmt.Fprint(w, "[")
 	for i, f := range files {
 		if i > 0 {
-			fmt.Fprint(w, ",")
+			_, _ = fmt.Fprint(w, ",")
 		}
-		fmt.Fprintf(w, `{"name":%q,"size":%d}`, f.name, f.size)
+		_, _ = fmt.Fprintf(w, `{"name":%q,"size":%d}`, f.name, f.size)
 	}
-	fmt.Fprint(w, "]")
+	_, _ = fmt.Fprint(w, "]")
 }
 
 func (s *Server) handleFile(w http.ResponseWriter, r *http.Request, repo, fileType, fileName string) {
@@ -278,7 +278,7 @@ func (s *Server) handleFile(w http.ResponseWriter, r *http.Request, repo, fileTy
 			http.Error(w, "Failed to open file", http.StatusInternalServerError)
 			return
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 
 		info, _ := file.Stat()
 		w.Header().Set("Content-Type", "application/octet-stream")
@@ -324,10 +324,10 @@ func (s *Server) handleFile(w http.ResponseWriter, r *http.Request, repo, fileTy
 
 		hash := sha256.New()
 		written, err := io.Copy(io.MultiWriter(file, hash), r.Body)
-		file.Close()
+		_ = file.Close()
 
 		if err != nil {
-			os.Remove(tmpPath)
+			_ = os.Remove(tmpPath)
 			http.Error(w, "Failed to write file", http.StatusInternalServerError)
 			return
 		}
@@ -337,7 +337,7 @@ func (s *Server) handleFile(w http.ResponseWriter, r *http.Request, repo, fileTy
 			expectedHash := fileName
 			actualHash := hex.EncodeToString(hash.Sum(nil))
 			if actualHash != expectedHash {
-				os.Remove(tmpPath)
+				_ = os.Remove(tmpPath)
 				http.Error(w, "Hash mismatch", http.StatusBadRequest)
 				return
 			}
@@ -345,7 +345,7 @@ func (s *Server) handleFile(w http.ResponseWriter, r *http.Request, repo, fileTy
 
 		// Rename temp file to final name
 		if err := os.Rename(tmpPath, filePath); err != nil {
-			os.Remove(tmpPath)
+			_ = os.Remove(tmpPath)
 			http.Error(w, "Failed to finalize file", http.StatusInternalServerError)
 			return
 		}

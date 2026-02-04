@@ -195,7 +195,7 @@ func TestVerifyAgainstRecord_MissingFiles(t *testing.T) {
 	dataPath := filepath.Join(tmpDir, "testrepo", "data")
 	entries, _ := os.ReadDir(dataPath)
 	if len(entries) > 0 {
-		os.RemoveAll(filepath.Join(dataPath, entries[0].Name()))
+		_ = os.RemoveAll(filepath.Join(dataPath, entries[0].Name()))
 	}
 
 	// Verify against record (should fail)

@@ -149,7 +149,7 @@ func TestSchedulerStatus(t *testing.T) {
 	s := NewScheduler(sched, backupFunc)
 
 	// Before start
-	lastRun, lastErr, nextRun := s.Status()
+	lastRun, nextRun, lastErr := s.Status()
 	assert.True(t, lastRun.IsZero(), "lastRun should be zero before any run")
 	assert.Nil(t, lastErr, "lastErr should be nil before any run")
 	assert.True(t, nextRun.IsZero(), "nextRun should be zero when not running")
@@ -158,7 +158,7 @@ func TestSchedulerStatus(t *testing.T) {
 	time.Sleep(100 * time.Millisecond) // Let it run
 	s.Stop()
 
-	lastRun, lastErr, _ = s.Status()
+	lastRun, _, lastErr = s.Status()
 	assert.False(t, lastRun.IsZero(), "lastRun should be set after run")
 	assert.Nil(t, lastErr, "lastErr should be nil after successful run")
 }

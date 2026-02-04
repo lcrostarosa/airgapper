@@ -40,7 +40,7 @@ func TestCreateTicket(t *testing.T) {
 func TestTicketManager_RegisterAndValidate(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "ticket-manager-test")
 	require.NoError(t, err, "failed to create temp dir")
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	// Generate owner and host keys
 	ownerPub, ownerPriv, _ := crypto.GenerateKeyPair()
@@ -79,7 +79,7 @@ func TestTicketManager_RegisterAndValidate(t *testing.T) {
 func TestTicketManager_FileTicket(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "ticket-file-test")
 	require.NoError(t, err, "failed to create temp dir")
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	ownerPub, ownerPriv, _ := crypto.GenerateKeyPair()
 	hostPub, hostPriv, _ := crypto.GenerateKeyPair()
@@ -115,7 +115,7 @@ func TestTicketManager_FileTicket(t *testing.T) {
 func TestTicketManager_RecordUsage(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "ticket-usage-test")
 	require.NoError(t, err, "failed to create temp dir")
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	ownerPub, ownerPriv, _ := crypto.GenerateKeyPair()
 	hostPub, hostPriv, _ := crypto.GenerateKeyPair()
@@ -149,7 +149,7 @@ func TestTicketManager_RecordUsage(t *testing.T) {
 func TestTicketManager_InvalidSignature(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "ticket-invalid-test")
 	require.NoError(t, err, "failed to create temp dir")
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	ownerPub, _, _ := crypto.GenerateKeyPair()
 	hostPub, hostPriv, _ := crypto.GenerateKeyPair()
@@ -177,7 +177,7 @@ func TestTicketManager_InvalidSignature(t *testing.T) {
 func TestTicketManager_ExpiredTicket(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "ticket-expired-test")
 	require.NoError(t, err, "failed to create temp dir")
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	ownerPub, ownerPriv, _ := crypto.GenerateKeyPair()
 	hostPub, hostPriv, _ := crypto.GenerateKeyPair()
@@ -206,7 +206,7 @@ func TestTicketManager_ExpiredTicket(t *testing.T) {
 func TestTicketManager_ListTickets(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "ticket-list-test")
 	require.NoError(t, err, "failed to create temp dir")
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	ownerPub, ownerPriv, _ := crypto.GenerateKeyPair()
 	hostPub, hostPriv, _ := crypto.GenerateKeyPair()

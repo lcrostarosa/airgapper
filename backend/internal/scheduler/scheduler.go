@@ -101,7 +101,7 @@ func (s *Scheduler) Stop() {
 }
 
 // Status returns scheduler status
-func (s *Scheduler) Status() (lastRun time.Time, lastError error, nextRun time.Time) {
+func (s *Scheduler) Status() (lastRun time.Time, nextRun time.Time, lastError error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

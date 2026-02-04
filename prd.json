@@ -1,0 +1,95 @@
+{
+  "branchName": "refactor/backend-tests-and-splits",
+  "projectContext": "Airgapper Go backend improvements - adding test coverage for critical packages with 0% coverage, and splitting large files for maintainability.",
+  "userStories": [
+    {
+      "id": "1",
+      "title": "Add unit tests for crypto package",
+      "description": "The internal/crypto package has 0% test coverage. Add comprehensive tests for GenerateKeyPair, Sign, Verify, KeyID, and RestoreRequestSignData.Hash().",
+      "acceptanceCriteria": [
+        "backend/internal/crypto/keys_test.go exists",
+        "Tests cover: key generation, sign/verify round-trip, invalid key sizes, KeyID determinism, RestoreRequestSignData.Hash canonical ordering",
+        "Tests pass: cd backend && go test ./internal/crypto/...",
+        "Coverage >80%: cd backend && go test ./internal/crypto/... -cover"
+      ],
+      "priority": 1,
+      "passes": true
+    },
+    {
+      "id": "2",
+      "title": "Add unit tests for config package",
+      "description": "The internal/config package has 0% test coverage. Add tests for config loading, validation, and default values.",
+      "acceptanceCriteria": [
+        "backend/internal/config/*_test.go exists",
+        "Tests cover: loading valid config, missing required fields, default values, invalid values",
+        "Tests pass: cd backend && go test ./internal/config/...",
+        "Coverage >60%"
+      ],
+      "priority": 2,
+      "passes": true
+    },
+    {
+      "id": "3",
+      "title": "Split internal/integrity/checker.go",
+      "description": "The 588-line checker.go is too large. Split into focused files: checker.go (core IntegrityChecker struct and main methods), scheduled.go (ScheduledChecker), history.go (history management), merkle.go (Merkle tree functions).",
+      "acceptanceCriteria": [
+        "internal/integrity/ has 4+ .go files (excluding tests)",
+        "No file exceeds 200 lines (excluding tests)",
+        "All tests pass: cd backend && go test ./internal/integrity/...",
+        "Package API unchanged (same exported functions/types)"
+      ],
+      "priority": 3,
+      "passes": true
+    },
+    {
+      "id": "4",
+      "title": "Split internal/cli/emergency.go",
+      "description": "The 560-line cli/emergency.go should be split by command group: recovery_cmd.go, deadman_cmd.go, override_cmd.go, notify_cmd.go.",
+      "acceptanceCriteria": [
+        "internal/cli/ has separate files for emergency command groups",
+        "No file exceeds 200 lines",
+        "All tests pass: cd backend && go test ./...",
+        "CLI behavior unchanged"
+      ],
+      "priority": 4,
+      "passes": true
+    },
+    {
+      "id": "5",
+      "title": "Split internal/emergency/emergency.go",
+      "description": "The 435-line emergency/emergency.go should be split by config type: recovery.go, deadman.go, override.go, notify.go.",
+      "acceptanceCriteria": [
+        "internal/emergency/ has 4+ .go files",
+        "No file exceeds 150 lines",
+        "All tests pass: cd backend && go test ./...",
+        "Package API unchanged"
+      ],
+      "priority": 5,
+      "passes": true
+    },
+    {
+      "id": "6",
+      "title": "Improve consent package test coverage",
+      "description": "The internal/consent package has only 38.5% coverage. Add tests to reach >70% coverage, focusing on untested code paths.",
+      "acceptanceCriteria": [
+        "Coverage >70%: cd backend && go test ./internal/consent/... -cover",
+        "Tests cover: request creation, approval flow, expiration, concurrent access",
+        "All existing tests still pass"
+      ],
+      "priority": 6,
+      "passes": true
+    },
+    {
+      "id": "7",
+      "title": "Final validation - all tests pass",
+      "description": "Run full test suite and verify all packages compile and tests pass.",
+      "acceptanceCriteria": [
+        "cd backend && go test ./... passes with no failures",
+        "cd backend && go build ./... passes",
+        "No new lint errors (if golangci-lint available)"
+      ],
+      "priority": 7,
+      "passes": true
+    }
+  ]
+}

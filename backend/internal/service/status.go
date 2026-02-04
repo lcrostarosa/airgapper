@@ -116,7 +116,7 @@ func (s *StatusService) GetSystemStatus(pendingCount int) *SystemStatus {
 
 	// Add scheduler info
 	if s.scheduler != nil {
-		lastRun, lastErr, nextRun := s.scheduler.Status()
+		lastRun, nextRun, lastErr := s.scheduler.Status()
 		schedStatus := &SchedulerStatus{
 			Enabled:  true,
 			Schedule: s.cfg.BackupSchedule,
@@ -155,7 +155,7 @@ func (s *StatusService) GetScheduleInfo() *ScheduleInfo {
 	}
 
 	if s.scheduler != nil {
-		lastRun, lastErr, nextRun := s.scheduler.Status()
+		lastRun, nextRun, lastErr := s.scheduler.Status()
 		if !lastRun.IsZero() {
 			info.LastRun = lastRun.Format("2006-01-02T15:04:05Z07:00")
 			if lastErr != nil {
