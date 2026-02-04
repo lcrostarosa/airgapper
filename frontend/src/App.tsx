@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import type { VaultConfig, Step } from "./types";
 import { Welcome } from "./components/Welcome";
 import { InitVault } from "./components/InitVault";
@@ -7,22 +7,21 @@ import { Dashboard } from "./components/Dashboard";
 
 const STORAGE_KEY = "airgapper_vault";
 
+function loadSavedConfig(): VaultConfig | null {
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) {
+    try {
+      return JSON.parse(saved);
+    } catch {
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  }
+  return null;
+}
+
 function App() {
   const [step, setStep] = useState<Step>("welcome");
-  const [config, setConfig] = useState<VaultConfig | null>(null);
-
-  // Load saved config on mount
-  useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        setConfig(parsed);
-      } catch {
-        localStorage.removeItem(STORAGE_KEY);
-      }
-    }
-  }, []);
+  const [config, setConfig] = useState<VaultConfig | null>(loadSavedConfig);
 
   const handleComplete = (newConfig: VaultConfig) => {
     setConfig(newConfig);

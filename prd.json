@@ -1,92 +1,93 @@
 {
-  "branchName": "refactor/backend-tests-and-splits",
-  "projectContext": "Airgapper Go backend improvements - adding test coverage for critical packages with 0% coverage, and splitting large files for maintainability.",
+  "branchName": "refactor/frontend-splits-and-tests",
+  "projectContext": "Airgapper frontend component refactoring - splitting large components into smaller, focused modules for better maintainability. Also adding test coverage for frontend components.",
   "userStories": [
     {
       "id": "1",
-      "title": "Add unit tests for crypto package",
-      "description": "The internal/crypto package has 0% test coverage. Add comprehensive tests for GenerateKeyPair, Sign, Verify, KeyID, and RestoreRequestSignData.Hash().",
+      "title": "Split HostSetup.tsx into step components",
+      "description": "The 789-line HostSetup.tsx is too large. Split into focused step components: HostSetupIntro.tsx, HostSetupStorage.tsx, HostSetupTerms.tsx, HostSetupInitialize.tsx, HostSetupComplete.tsx. The main HostSetup.tsx should orchestrate the steps with minimal logic.",
       "acceptanceCriteria": [
-        "backend/internal/crypto/keys_test.go exists",
-        "Tests cover: key generation, sign/verify round-trip, invalid key sizes, KeyID determinism, RestoreRequestSignData.Hash canonical ordering",
-        "Tests pass: cd backend && go test ./internal/crypto/...",
-        "Coverage >80%: cd backend && go test ./internal/crypto/... -cover"
+        "frontend/src/components/host-setup/ directory exists with 5+ component files",
+        "No single file exceeds 200 lines",
+        "Original HostSetup.tsx reduced to orchestration only (<150 lines)",
+        "Frontend builds: cd frontend && npm run build",
+        "UI behavior unchanged"
       ],
       "priority": 1,
       "passes": true
     },
     {
       "id": "2",
-      "title": "Add unit tests for config package",
-      "description": "The internal/config package has 0% test coverage. Add tests for config loading, validation, and default values.",
+      "title": "Split Dashboard.tsx into tab components",
+      "description": "The 588-line Dashboard.tsx should be split into focused tab components: DashboardOverview.tsx, DashboardRequests.tsx, DashboardSettings.tsx. Main Dashboard.tsx handles tab state and routing.",
       "acceptanceCriteria": [
-        "backend/internal/config/*_test.go exists",
-        "Tests cover: loading valid config, missing required fields, default values, invalid values",
-        "Tests pass: cd backend && go test ./internal/config/...",
-        "Coverage >60%"
+        "frontend/src/components/dashboard/ directory exists with 3+ component files",
+        "No single file exceeds 250 lines",
+        "Frontend builds: cd frontend && npm run build",
+        "UI behavior unchanged"
       ],
       "priority": 2,
       "passes": true
     },
     {
       "id": "3",
-      "title": "Split internal/integrity/checker.go",
-      "description": "The 588-line checker.go is too large. Split into focused files: checker.go (core IntegrityChecker struct and main methods), scheduled.go (ScheduledChecker), history.go (history management), merkle.go (Merkle tree functions).",
+      "title": "Split InitVault.tsx into step components",
+      "description": "The 563-line InitVault.tsx should be split into step components for each initialization phase: InitVaultForm.tsx, InitVaultProgress.tsx, InitVaultComplete.tsx.",
       "acceptanceCriteria": [
-        "internal/integrity/ has 4+ .go files (excluding tests)",
-        "No file exceeds 200 lines (excluding tests)",
-        "All tests pass: cd backend && go test ./internal/integrity/...",
-        "Package API unchanged (same exported functions/types)"
+        "frontend/src/components/init-vault/ directory exists with 3+ component files",
+        "No single file exceeds 200 lines",
+        "Frontend builds: cd frontend && npm run build",
+        "UI behavior unchanged"
       ],
       "priority": 3,
       "passes": true
     },
     {
       "id": "4",
-      "title": "Split internal/cli/emergency.go",
-      "description": "The 560-line cli/emergency.go should be split by command group: recovery_cmd.go, deadman_cmd.go, override_cmd.go, notify_cmd.go.",
+      "title": "Split JoinVault.tsx into mode components",
+      "description": "The 360-line JoinVault.tsx has two modes (SSS and consensus). Split into: JoinVaultSSS.tsx, JoinVaultConsensus.tsx, with shared form components.",
       "acceptanceCriteria": [
-        "internal/cli/ has separate files for emergency command groups",
-        "No file exceeds 200 lines",
-        "All tests pass: cd backend && go test ./...",
-        "CLI behavior unchanged"
+        "frontend/src/components/join-vault/ directory exists with 3+ component files",
+        "No single file exceeds 150 lines",
+        "Frontend builds: cd frontend && npm run build",
+        "UI behavior unchanged"
       ],
       "priority": 4,
       "passes": true
     },
     {
       "id": "5",
-      "title": "Split internal/emergency/emergency.go",
-      "description": "The 435-line emergency/emergency.go should be split by config type: recovery.go, deadman.go, override.go, notify.go.",
+      "title": "Add unit tests for SSS library",
+      "description": "The frontend/src/lib/sss.ts library has good test coverage but ensure edge cases are covered: empty inputs, invalid hex, boundary conditions for Shamir's Secret Sharing.",
       "acceptanceCriteria": [
-        "internal/emergency/ has 4+ .go files",
-        "No file exceeds 150 lines",
-        "All tests pass: cd backend && go test ./...",
-        "Package API unchanged"
+        "frontend/src/lib/sss.test.ts has >95% coverage",
+        "Tests cover: empty inputs, invalid hex, min/max share counts, share reconstruction order independence",
+        "Tests pass: cd frontend && npm test"
       ],
       "priority": 5,
       "passes": true
     },
     {
       "id": "6",
-      "title": "Improve consent package test coverage",
-      "description": "The internal/consent package has only 38.5% coverage. Add tests to reach >70% coverage, focusing on untested code paths.",
+      "title": "Add unit tests for crypto library",
+      "description": "Add tests for frontend/src/lib/crypto.ts covering key generation, encryption/decryption round-trips, and error cases.",
       "acceptanceCriteria": [
-        "Coverage >70%: cd backend && go test ./internal/consent/... -cover",
-        "Tests cover: request creation, approval flow, expiration, concurrent access",
-        "All existing tests still pass"
+        "frontend/src/lib/crypto.test.ts exists with comprehensive tests",
+        "Tests cover: key generation, encrypt/decrypt round-trip, invalid inputs",
+        "Tests pass: cd frontend && npm test"
       ],
       "priority": 6,
       "passes": true
     },
     {
       "id": "7",
-      "title": "Final validation - all tests pass",
-      "description": "Run full test suite and verify all packages compile and tests pass.",
+      "title": "Final validation - lint, typecheck, build, test",
+      "description": "Run all quality checks across the frontend codebase after refactoring.",
       "acceptanceCriteria": [
-        "cd backend && go test ./... passes with no failures",
-        "cd backend && go build ./... passes",
-        "No new lint errors (if golangci-lint available)"
+        "cd frontend && npx eslint src/ --max-warnings=0 passes",
+        "cd frontend && npx tsc --noEmit passes",
+        "cd frontend && npm run build passes",
+        "cd frontend && npm test passes (if tests exist)"
       ],
       "priority": 7,
       "passes": true
