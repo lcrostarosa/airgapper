@@ -86,7 +86,7 @@ func notifyPeer(peerAddr string, req *consent.RestoreRequest) {
 		logging.Warn("Could not notify peer - share the request ID manually", logging.Err(err))
 		return
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	if resp.StatusCode == http.StatusCreated || resp.StatusCode == http.StatusOK {
 		logging.Info("Peer notified successfully")

@@ -14,7 +14,7 @@ func TestAuditChain_Record(t *testing.T) {
 	// Create temp directory
 	tempDir, err := os.MkdirTemp("", "audit-chain-test")
 	require.NoError(t, err, "failed to create temp dir")
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	// Generate test keys
 	pubKey, privKey, err := crypto.GenerateKeyPair()
@@ -44,7 +44,7 @@ func TestAuditChain_Record(t *testing.T) {
 func TestAuditChain_Verify(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "audit-chain-verify-test")
 	require.NoError(t, err, "failed to create temp dir")
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	pubKey, privKey, err := crypto.GenerateKeyPair()
 	require.NoError(t, err, "failed to generate keys")
@@ -71,7 +71,7 @@ func TestAuditChain_Verify(t *testing.T) {
 func TestAuditChain_Persistence(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "audit-chain-persist-test")
 	require.NoError(t, err, "failed to create temp dir")
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	pubKey, privKey, err := crypto.GenerateKeyPair()
 	require.NoError(t, err, "failed to generate keys")
@@ -107,7 +107,7 @@ func TestAuditChain_Persistence(t *testing.T) {
 func TestAuditChain_GetEntries(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "audit-chain-get-test")
 	require.NoError(t, err, "failed to create temp dir")
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	chain, err := NewAuditChain(tempDir, "test", nil, nil, false)
 	require.NoError(t, err, "failed to create audit chain")
@@ -135,7 +135,7 @@ func TestAuditChain_GetEntries(t *testing.T) {
 func TestAuditChain_Export(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "audit-chain-export-test")
 	require.NoError(t, err, "failed to create temp dir")
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	pubKey, privKey, err := crypto.GenerateKeyPair()
 	require.NoError(t, err, "failed to generate keys")
