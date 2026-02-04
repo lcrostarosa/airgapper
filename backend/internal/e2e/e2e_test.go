@@ -459,7 +459,7 @@ func TestE2E_DataIntegrity_FileSimulation(t *testing.T) {
 	// Create temp directory
 	tmpDir, err := os.MkdirTemp("", "airgapper-e2e-")
 	require.NoError(t, err, "Failed to create temp dir")
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Create a test file with known content
 	testFile := filepath.Join(tmpDir, "important-document.txt")
