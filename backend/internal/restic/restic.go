@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -35,12 +36,26 @@ func NewClient(repoURL, password string) *Client {
 // Init initializes a new restic repository
 func (c *Client) Init(ctx context.Context) error {
 	cmd := exec.CommandContext(ctx, "restic", "init", "-r", c.RepoURL)
-	cmd.Env = append(os.Environ(), "RESTIC_PASSWORD="+c.Password)
+	cmd.Env = filterResticEnv(os.Environ())
 
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 
-	if err := cmd.Run(); err != nil {
+	// Pass password via stdin for security (avoids env var exposure in /proc)
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return fmt.Errorf("failed to create stdin pipe: %w", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start restic: %w", err)
+	}
+
+	// Write password to stdin
+	_, _ = io.WriteString(stdin, c.Password)
+	stdin.Close()
+
+	if err := cmd.Wait(); err != nil {
 		// Check if repo already exists
 		if strings.Contains(stderr.String(), "already initialized") {
 			return nil
@@ -66,11 +81,24 @@ func (c *Client) Backup(ctx context.Context, paths []string, tags []string) erro
 	args = append(args, paths...)
 
 	cmd := exec.CommandContext(ctx, "restic", args...)
-	cmd.Env = append(os.Environ(), "RESTIC_PASSWORD="+c.Password)
+	cmd.Env = filterResticEnv(os.Environ())
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	return cmd.Run()
+	// Pass password via stdin for security
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return fmt.Errorf("failed to create stdin pipe: %w", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start restic: %w", err)
+	}
+
+	_, _ = io.WriteString(stdin, c.Password)
+	stdin.Close()
+
+	return cmd.Wait()
 }
 
 // Restore restores a snapshot to the target directory
@@ -82,34 +110,75 @@ func (c *Client) Restore(ctx context.Context, snapshotID, target string) error {
 	args := []string{"restore", "-r", c.RepoURL, snapshotID, "--target", target}
 
 	cmd := exec.CommandContext(ctx, "restic", args...)
-	cmd.Env = append(os.Environ(), "RESTIC_PASSWORD="+c.Password)
+	cmd.Env = filterResticEnv(os.Environ())
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	return cmd.Run()
+	// Pass password via stdin for security
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return fmt.Errorf("failed to create stdin pipe: %w", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start restic: %w", err)
+	}
+
+	_, _ = io.WriteString(stdin, c.Password)
+	stdin.Close()
+
+	return cmd.Wait()
 }
 
 // Snapshots lists all snapshots
 func (c *Client) Snapshots(ctx context.Context) (string, error) {
 	cmd := exec.CommandContext(ctx, "restic", "snapshots", "-r", c.RepoURL)
-	cmd.Env = append(os.Environ(), "RESTIC_PASSWORD="+c.Password)
+	cmd.Env = filterResticEnv(os.Environ())
 
-	output, err := cmd.Output()
+	// Pass password via stdin for security
+	stdin, err := cmd.StdinPipe()
 	if err != nil {
+		return "", fmt.Errorf("failed to create stdin pipe: %w", err)
+	}
+
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+
+	if err := cmd.Start(); err != nil {
+		return "", fmt.Errorf("failed to start restic: %w", err)
+	}
+
+	_, _ = io.WriteString(stdin, c.Password)
+	stdin.Close()
+
+	if err := cmd.Wait(); err != nil {
 		return "", err
 	}
 
-	return string(output), nil
+	return stdout.String(), nil
 }
 
 // Check verifies repository integrity
 func (c *Client) Check(ctx context.Context) error {
 	cmd := exec.CommandContext(ctx, "restic", "check", "-r", c.RepoURL)
-	cmd.Env = append(os.Environ(), "RESTIC_PASSWORD="+c.Password)
+	cmd.Env = filterResticEnv(os.Environ())
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	return cmd.Run()
+	// Pass password via stdin for security
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return fmt.Errorf("failed to create stdin pipe: %w", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start restic: %w", err)
+	}
+
+	_, _ = io.WriteString(stdin, c.Password)
+	stdin.Close()
+
+	return cmd.Wait()
 }
 
 // IsInstalled checks if restic is available
@@ -126,4 +195,19 @@ func Version() (string, error) {
 		return "", err
 	}
 	return strings.TrimSpace(string(output)), nil
+}
+
+// filterResticEnv removes RESTIC_PASSWORD from environment to ensure password
+// is only passed via stdin (more secure - doesn't show in /proc/*/environ)
+func filterResticEnv(environ []string) []string {
+	// Tell restic to read password from stdin
+	result := []string{"RESTIC_PASSWORD_COMMAND=cat"}
+	for _, env := range environ {
+		if !strings.HasPrefix(env, "RESTIC_PASSWORD=") &&
+			!strings.HasPrefix(env, "RESTIC_PASSWORD_FILE=") &&
+			!strings.HasPrefix(env, "RESTIC_PASSWORD_COMMAND=") {
+			result = append(result, env)
+		}
+	}
+	return result
 }

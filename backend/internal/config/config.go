@@ -7,8 +7,10 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/lcrostarosa/airgapper/backend/internal/crypto"
 	"github.com/lcrostarosa/airgapper/backend/internal/emergency"
 	apperrors "github.com/lcrostarosa/airgapper/backend/internal/errors"
+	"github.com/lcrostarosa/airgapper/backend/internal/filelock"
 	"github.com/lcrostarosa/airgapper/backend/internal/verification"
 )
 
@@ -70,6 +72,8 @@ type Config struct {
 
 	// API settings
 	ListenAddr string `json:"listen_addr,omitempty"`
+	APIKey     string `json:"api_key,omitempty"`
+	DevMode    bool   `json:"dev_mode,omitempty"` // Disables auth for development
 
 	// Backup settings (owner only)
 	BackupPaths    []string `json:"backup_paths,omitempty"`
@@ -91,8 +95,18 @@ type Config struct {
 	// Host verification settings (uses verification package types)
 	Verification *verification.VerificationSystemConfig `json:"verification,omitempty"`
 
+	// TLS settings
+	TLSCertPath string `json:"tls_cert_path,omitempty"`
+	TLSKeyPath  string `json:"tls_key_path,omitempty"`
+
+	// Encrypted secrets (when encryption is enabled)
+	EncryptedSecrets *crypto.EncryptedSecrets `json:"encrypted_secrets,omitempty"`
+
 	// Paths (not serialized)
 	ConfigDir string `json:"-"`
+
+	// Runtime fields (not serialized)
+	encryptionPassphrase string `json:"-"` // Used for encryption/decryption
 }
 
 // DefaultConfigDir returns the default config directory
@@ -145,12 +159,20 @@ func (c *Config) Save() error {
 		return err
 	}
 
+	configPath := filepath.Join(c.ConfigDir, "config.json")
+
+	// Use file locking to prevent race conditions
+	lock := filelock.New(configPath)
+	if err := lock.Lock(); err != nil {
+		return err
+	}
+	defer lock.Unlock()
+
 	data, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
 		return err
 	}
 
-	configPath := filepath.Join(c.ConfigDir, "config.json")
 	return os.WriteFile(configPath, data, 0600)
 }
 
@@ -249,4 +271,153 @@ func (c *Config) EnsureEmergency() *emergency.Config {
 		c.Emergency = emergency.NewConfig()
 	}
 	return c.Emergency
+}
+
+// --- Encryption methods ---
+
+// SetEncryptionPassphrase sets the passphrase used for config encryption
+func (c *Config) SetEncryptionPassphrase(passphrase string) {
+	c.encryptionPassphrase = passphrase
+}
+
+// IsEncrypted returns true if sensitive fields are encrypted
+func (c *Config) IsEncrypted() bool {
+	return crypto.IsEncrypted(c.EncryptedSecrets)
+}
+
+// EncryptSecrets encrypts sensitive config fields
+// Requires SetEncryptionPassphrase to be called first
+func (c *Config) EncryptSecrets() error {
+	if c.encryptionPassphrase == "" {
+		return apperrors.ErrNoEncryptionPassphrase
+	}
+
+	secrets := &crypto.EncryptedSecrets{}
+
+	// Encrypt password
+	if c.Password != "" {
+		enc, err := crypto.EncryptString(c.Password, c.encryptionPassphrase)
+		if err != nil {
+			return err
+		}
+		secrets.Password = enc
+		c.Password = "" // Clear plaintext
+	}
+
+	// Encrypt private key
+	if len(c.PrivateKey) > 0 {
+		enc, err := crypto.Encrypt(c.PrivateKey, c.encryptionPassphrase)
+		if err != nil {
+			return err
+		}
+		secrets.PrivateKey = enc
+		c.PrivateKey = nil // Clear plaintext
+	}
+
+	// Encrypt local share
+	if len(c.LocalShare) > 0 {
+		enc, err := crypto.Encrypt(c.LocalShare, c.encryptionPassphrase)
+		if err != nil {
+			return err
+		}
+		secrets.LocalShare = enc
+		c.LocalShare = nil // Clear plaintext
+	}
+
+	// Encrypt API key
+	if c.APIKey != "" {
+		enc, err := crypto.EncryptString(c.APIKey, c.encryptionPassphrase)
+		if err != nil {
+			return err
+		}
+		secrets.APIKey = enc
+		c.APIKey = "" // Clear plaintext
+	}
+
+	c.EncryptedSecrets = secrets
+	return nil
+}
+
+// DecryptSecrets decrypts sensitive config fields
+// Requires SetEncryptionPassphrase to be called first
+func (c *Config) DecryptSecrets() error {
+	if c.EncryptedSecrets == nil {
+		return nil // Nothing to decrypt
+	}
+
+	if c.encryptionPassphrase == "" {
+		return apperrors.ErrNoEncryptionPassphrase
+	}
+
+	// Decrypt password
+	if c.EncryptedSecrets.Password != nil {
+		password, err := crypto.DecryptString(c.EncryptedSecrets.Password, c.encryptionPassphrase)
+		if err != nil {
+			return err
+		}
+		c.Password = password
+	}
+
+	// Decrypt private key
+	if c.EncryptedSecrets.PrivateKey != nil {
+		privateKey, err := crypto.Decrypt(c.EncryptedSecrets.PrivateKey, c.encryptionPassphrase)
+		if err != nil {
+			return err
+		}
+		c.PrivateKey = privateKey
+	}
+
+	// Decrypt local share
+	if c.EncryptedSecrets.LocalShare != nil {
+		localShare, err := crypto.Decrypt(c.EncryptedSecrets.LocalShare, c.encryptionPassphrase)
+		if err != nil {
+			return err
+		}
+		c.LocalShare = localShare
+	}
+
+	// Decrypt API key
+	if c.EncryptedSecrets.APIKey != nil {
+		apiKey, err := crypto.DecryptString(c.EncryptedSecrets.APIKey, c.encryptionPassphrase)
+		if err != nil {
+			return err
+		}
+		c.APIKey = apiKey
+	}
+
+	return nil
+}
+
+// LoadWithPassphrase loads configuration and decrypts secrets if encrypted
+func LoadWithPassphrase(configDir, passphrase string) (*Config, error) {
+	cfg, err := Load(configDir)
+	if err != nil {
+		return nil, err
+	}
+
+	if cfg.IsEncrypted() {
+		if passphrase == "" {
+			return nil, apperrors.ErrConfigEncrypted
+		}
+		cfg.SetEncryptionPassphrase(passphrase)
+		if err := cfg.DecryptSecrets(); err != nil {
+			return nil, err
+		}
+	}
+
+	return cfg, nil
+}
+
+// SaveEncrypted saves the configuration with encrypted secrets
+func (c *Config) SaveEncrypted() error {
+	if c.encryptionPassphrase == "" {
+		return c.Save() // Fall back to unencrypted save
+	}
+
+	// Encrypt secrets before saving
+	if err := c.EncryptSecrets(); err != nil {
+		return err
+	}
+
+	return c.Save()
 }

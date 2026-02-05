@@ -20,6 +20,8 @@ type GracefulServer struct {
 	server       *http.Server
 	beforeStop   func()
 	shutdownHook func()
+	tlsCertFile  string
+	tlsKeyFile   string
 }
 
 // GracefulServerOptions configures a GracefulServer
@@ -28,6 +30,10 @@ type GracefulServerOptions struct {
 	BeforeStop func()
 	// ShutdownHook is called after server shutdown completes
 	ShutdownHook func()
+	// TLSCertFile is the path to the TLS certificate file (enables HTTPS if set)
+	TLSCertFile string
+	// TLSKeyFile is the path to the TLS private key file
+	TLSKeyFile string
 }
 
 // NewGracefulServer creates a server wrapper with graceful shutdown
@@ -36,19 +42,29 @@ func NewGracefulServer(server *http.Server, opts *GracefulServerOptions) *Gracef
 	if opts != nil {
 		gs.beforeStop = opts.BeforeStop
 		gs.shutdownHook = opts.ShutdownHook
+		gs.tlsCertFile = opts.TLSCertFile
+		gs.tlsKeyFile = opts.TLSKeyFile
 	}
 	return gs
 }
 
 // ListenAndServe starts the server and handles graceful shutdown on SIGINT/SIGTERM.
 // This is a blocking call that returns when the server has been shut down.
+// If TLS is configured, the server will use HTTPS.
 func (gs *GracefulServer) ListenAndServe() error {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
 	errCh := make(chan error, 1)
 	go func() {
-		if err := gs.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		var err error
+		if gs.tlsCertFile != "" && gs.tlsKeyFile != "" {
+			logging.Info("Starting HTTPS server with TLS")
+			err = gs.server.ListenAndServeTLS(gs.tlsCertFile, gs.tlsKeyFile)
+		} else {
+			err = gs.server.ListenAndServe()
+		}
+		if err != nil && err != http.ErrServerClosed {
 			errCh <- err
 		}
 	}()
@@ -60,6 +76,13 @@ func (gs *GracefulServer) ListenAndServe() error {
 	case <-stop:
 		return gs.Shutdown()
 	}
+}
+
+// ListenAndServeTLS starts the server with TLS and handles graceful shutdown.
+func (gs *GracefulServer) ListenAndServeTLS(certFile, keyFile string) error {
+	gs.tlsCertFile = certFile
+	gs.tlsKeyFile = keyFile
+	return gs.ListenAndServe()
 }
 
 // Shutdown gracefully shuts down the server
@@ -91,6 +114,16 @@ func (gs *GracefulServer) Shutdown() error {
 func RunWithGracefulShutdown(server *http.Server, beforeStop func()) error {
 	gs := NewGracefulServer(server, &GracefulServerOptions{
 		BeforeStop: beforeStop,
+	})
+	return gs.ListenAndServe()
+}
+
+// RunWithGracefulShutdownTLS starts an HTTPS server with TLS and handles shutdown signals.
+func RunWithGracefulShutdownTLS(server *http.Server, certFile, keyFile string, beforeStop func()) error {
+	gs := NewGracefulServer(server, &GracefulServerOptions{
+		BeforeStop:  beforeStop,
+		TLSCertFile: certFile,
+		TLSKeyFile:  keyFile,
 	})
 	return gs.ListenAndServe()
 }

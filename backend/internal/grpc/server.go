@@ -91,9 +91,16 @@ func (s *Server) SetScheduler(sched *scheduler.Scheduler) {
 // The prefix should typically be empty or "/" - handlers will be mounted at their
 // canonical paths (e.g., /airgapper.v1.HealthService/Check).
 func (s *Server) RegisterHandlers(mux *http.ServeMux) {
-	// Create interceptors for logging, error handling, etc.
+	// Create auth config from server config
+	authConfig := &AuthConfig{
+		APIKey:  s.cfg.APIKey,
+		DevMode: s.cfg.DevMode,
+	}
+
+	// Create interceptors for logging, auth, error handling, etc.
 	interceptors := connect.WithInterceptors(
 		newLoggingInterceptor(),
+		newAuthInterceptor(authConfig),
 	)
 
 	// Health service

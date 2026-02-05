@@ -96,12 +96,66 @@ export type {
   CheckIntegrityResponse,
 } from "../gen/airgapper/v1/integrity_pb";
 
-// API base URL from environment or default
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8081";
+// API base URL configuration
+// In production, use same-origin to ensure HTTPS. In development, allow localhost.
+const API_BASE = import.meta.env.PROD
+  ? window.location.origin // Same-origin in production (inherits HTTPS)
+  : import.meta.env.VITE_API_URL || "http://localhost:8081";
+
+// CSRF token management
+let csrfToken: string | null = null;
+
+/**
+ * Get or generate a CSRF token
+ * The token is stored in sessionStorage to persist across page reloads
+ */
+function getCsrfToken(): string {
+  if (csrfToken) {
+    return csrfToken;
+  }
+
+  // Try to load from sessionStorage
+  const stored = sessionStorage.getItem("airgapper_csrf_token");
+  if (stored) {
+    csrfToken = stored;
+    return csrfToken;
+  }
+
+  // Generate a new token using Web Crypto API
+  const array = new Uint8Array(32);
+  crypto.getRandomValues(array);
+  csrfToken = Array.from(array, (b) => b.toString(16).padStart(2, "0")).join("");
+  sessionStorage.setItem("airgapper_csrf_token", csrfToken);
+  return csrfToken;
+}
+
+/**
+ * Clear CSRF token (call on logout or session end)
+ */
+export function clearCsrfToken(): void {
+  csrfToken = null;
+  sessionStorage.removeItem("airgapper_csrf_token");
+}
 
 // Create the Connect transport
+// Note: Connect-RPC automatically adds headers via fetch options
 const transport = createConnectTransport({
   baseUrl: API_BASE,
+  // Add security headers to all requests
+  fetch: (input, init) => {
+    const headers = new Headers(init?.headers);
+
+    // Add CSRF token to all POST requests (Connect-RPC uses POST for all calls)
+    headers.set("X-CSRF-Token", getCsrfToken());
+
+    // Add API key if configured
+    const apiKey = sessionStorage.getItem("airgapper_api_key");
+    if (apiKey) {
+      headers.set("X-API-Key", apiKey);
+    }
+
+    return fetch(input, { ...init, headers });
+  },
 });
 
 // ============================================================================

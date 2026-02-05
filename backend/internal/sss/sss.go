@@ -176,7 +176,7 @@ func gfMul(a, b byte) byte {
 
 func gfInverse(a byte) byte {
 	if a == 0 {
-		return 0
+		panic("cannot invert zero in GF(256)")
 	}
 	// Use extended Euclidean algorithm or lookup table
 	// For simplicity, we use exponentiation: a^254 = a^(-1) in GF(256)

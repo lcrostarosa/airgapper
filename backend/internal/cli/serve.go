@@ -41,6 +41,8 @@ func init() {
 	f.StringP("addr", "a", "", "Listen address (default: :8081 or AIRGAPPER_PORT)")
 	f.String("schedule", "", "Override backup schedule for this session")
 	f.String("paths", "", "Override backup paths for this session (comma-separated)")
+	f.String("tls-cert", "", "Path to TLS certificate file (enables HTTPS)")
+	f.String("tls-key", "", "Path to TLS private key file")
 	rootCmd.AddCommand(serveCmd)
 }
 
@@ -55,12 +57,25 @@ func runServe(ctx *runner.CommandContext, cmd *cobra.Command, args []string) err
 	addr := resolveAddr(cmd)
 	serveCfg.ListenAddr = addr
 
-	printServerInfo(serveCfg, addr)
+	// Check for TLS configuration
+	flags := runner.Flags(cmd)
+	tlsCert := flags.String("tls-cert")
+	tlsKey := flags.String("tls-key")
+
+	// Use config values if not provided via flags
+	if tlsCert == "" {
+		tlsCert = serveCfg.TLSCertPath
+	}
+	if tlsKey == "" {
+		tlsKey = serveCfg.TLSKeyPath
+	}
+
+	printServerInfo(serveCfg, addr, tlsCert != "")
 
 	apiServer := api.NewServer(serveCfg, addr)
 	sched := setupScheduler(cmd, serveCfg, apiServer)
 
-	return runServer(apiServer, sched)
+	return runServer(apiServer, sched, tlsCert, tlsKey)
 }
 
 func resolveAddr(cmd *cobra.Command) string {
@@ -82,11 +97,17 @@ func resolveAddr(cmd *cobra.Command) string {
 	return addr
 }
 
-func printServerInfo(serveCfg *config.Config, addr string) {
+func printServerInfo(serveCfg *config.Config, addr string, tlsEnabled bool) {
+	protocol := "http"
+	if tlsEnabled {
+		protocol = "https"
+	}
+
 	logging.Info("Airgapper server starting",
 		logging.String("name", serveCfg.Name),
 		logging.String("role", string(serveCfg.Role)),
-		logging.String("api", "http://localhost"+addr))
+		logging.String("api", protocol+"://localhost"+addr),
+		logging.Bool("tls", tlsEnabled))
 
 	logging.Info("Endpoints available:")
 	logging.Info("  GET  /health               - Health check")
@@ -153,7 +174,7 @@ func setupScheduler(cmd *cobra.Command, serveCfg *config.Config, apiServer *api.
 	return sched
 }
 
-func runServer(apiServer *api.Server, sched *scheduler.Scheduler) error {
+func runServer(apiServer *api.Server, sched *scheduler.Scheduler, tlsCert, tlsKey string) error {
 	logging.Info("Press Ctrl+C to stop")
 
 	httpServer := &http.Server{
@@ -161,9 +182,16 @@ func runServer(apiServer *api.Server, sched *scheduler.Scheduler) error {
 		Handler: apiServer.Handler(),
 	}
 
-	return server.RunWithGracefulShutdown(httpServer, func() {
+	beforeStop := func() {
 		if sched != nil {
 			sched.Stop()
 		}
-	})
+	}
+
+	// Use TLS if both cert and key are provided
+	if tlsCert != "" && tlsKey != "" {
+		return server.RunWithGracefulShutdownTLS(httpServer, tlsCert, tlsKey, beforeStop)
+	}
+
+	return server.RunWithGracefulShutdown(httpServer, beforeStop)
 }

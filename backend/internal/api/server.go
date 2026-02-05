@@ -10,6 +10,7 @@ import (
 	"github.com/lcrostarosa/airgapper/backend/internal/grpc"
 	"github.com/lcrostarosa/airgapper/backend/internal/integrity"
 	"github.com/lcrostarosa/airgapper/backend/internal/logging"
+	"github.com/lcrostarosa/airgapper/backend/internal/middleware"
 	"github.com/lcrostarosa/airgapper/backend/internal/scheduler"
 	"github.com/lcrostarosa/airgapper/backend/internal/storage"
 )
@@ -21,6 +22,7 @@ type Server struct {
 	storageServer           *storage.Server
 	integrityChecker        *integrity.Checker
 	managedScheduledChecker *integrity.ManagedScheduledChecker
+	rateLimiter             *middleware.RateLimiter
 	addr                    string
 
 	// cfg is for internal server initialization only (storage, integrity).
@@ -68,6 +70,9 @@ func NewServerWithOptions(cfg *config.Config, addr string, opts *ServerOptions) 
 	}
 	s.grpcServer = grpc.NewServer(cfg, grpcOpts)
 
+	// Initialize rate limiter
+	s.rateLimiter = middleware.NewRateLimiter(middleware.DefaultRateLimitConfig())
+
 	mux := http.NewServeMux()
 
 	// Register Connect-RPC handlers (gRPC-compatible API)
@@ -80,9 +85,12 @@ func NewServerWithOptions(cfg *config.Config, addr string, opts *ServerOptions) 
 		mux.Handle("/storage/", http.StripPrefix("/storage", storage.WithLogging(s.storageServer.Handler())))
 	}
 
+	// Wrap the mux with rate limiting middleware
+	handler := s.rateLimiter.Middleware(mux)
+
 	s.httpServer = &http.Server{
 		Addr:              addr,
-		Handler:           mux,
+		Handler:           handler,
 		ReadTimeout:       15 * time.Second,
 		ReadHeaderTimeout: 10 * time.Second,
 		WriteTimeout:      30 * time.Second,
@@ -108,6 +116,10 @@ func (s *Server) Start() error {
 
 // Shutdown gracefully shuts down the server
 func (s *Server) Shutdown(ctx context.Context) error {
+	// Stop rate limiter cleanup goroutine
+	if s.rateLimiter != nil {
+		s.rateLimiter.Stop()
+	}
 	return s.httpServer.Shutdown(ctx)
 }
 

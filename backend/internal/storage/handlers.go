@@ -246,12 +246,19 @@ func (s *Server) handleFile(w http.ResponseWriter, r *http.Request, repo, fileTy
 	}
 
 	// For data files, use subdirectory structure (first 2 chars)
-	var filePath string
+	var relativePath string
 	if fileType == "data" && len(fileName) >= 2 {
 		subdir := fileName[:2]
-		filePath = filepath.Join(s.basePath, repo, fileType, subdir, fileName)
+		relativePath = filepath.Join(repo, fileType, subdir, fileName)
 	} else {
-		filePath = filepath.Join(s.basePath, repo, fileType, fileName)
+		relativePath = filepath.Join(repo, fileType, fileName)
+	}
+
+	// Validate path stays within base directory (path traversal prevention)
+	filePath, err := ValidateSafePath(s.basePath, relativePath)
+	if err != nil {
+		http.Error(w, "Invalid path", http.StatusBadRequest)
+		return
 	}
 
 	switch r.Method {

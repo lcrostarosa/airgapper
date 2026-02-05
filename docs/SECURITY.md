@@ -258,3 +258,154 @@ The repository password encrypts:
 - **Time-locked recovery** - Auto-release after timeout
 - **Hardware key support** - TPM/HSM integration
 - **Audit log replication** - Tamper-evident logging
+
+---
+
+## Production Deployment Checklist
+
+Before deploying Airgapper to production, verify the following:
+
+### 1. Authentication
+
+- [ ] **Storage Server Authentication**: Configure htpasswd authentication for restic-rest-server
+  ```bash
+  # Generate htpasswd file
+  mkdir -p docker/auth
+  htpasswd -Bc docker/auth/.htpasswd <username>
+  chmod 600 docker/auth/.htpasswd
+  ```
+
+- [ ] **API Authentication**: Set up API key authentication
+  ```bash
+  # Generate a secure API key
+  openssl rand -hex 32
+
+  # Add to config or environment
+  export AIRGAPPER_API_KEY="<generated-key>"
+  ```
+
+### 2. TLS/HTTPS
+
+- [ ] **Generate TLS Certificates**: Use proper certificates (Let's Encrypt recommended)
+  ```bash
+  # For testing only - generate self-signed cert
+  mkdir -p docker/certs
+  openssl req -x509 -newkey rsa:4096 \
+    -keyout docker/certs/server.key \
+    -out docker/certs/server.crt \
+    -days 365 -nodes \
+    -subj "/CN=airgapper"
+  chmod 600 docker/certs/server.key
+  ```
+
+- [ ] **Enable TLS on Backend**: Start server with TLS flags
+  ```bash
+  airgapper serve --tls-cert /path/to/cert.pem --tls-key /path/to/key.pem
+  ```
+
+### 3. Network Security
+
+- [ ] **Bind to Localhost**: Expose services only on 127.0.0.1
+  ```yaml
+  # In docker-compose.yml
+  ports:
+    - "127.0.0.1:8081:8081"  # Not "8081:8081"
+  ```
+
+- [ ] **Use Reverse Proxy**: Place nginx or similar in front for TLS termination
+
+- [ ] **Firewall Configuration**: Only allow necessary ports (typically just 443)
+
+### 4. Configuration Security
+
+- [ ] **Encrypt Config at Rest**: Use config encryption for sensitive data
+  ```bash
+  # Set encryption passphrase
+  export AIRGAPPER_CONFIG_PASSPHRASE="<secure-passphrase>"
+  ```
+
+- [ ] **Secure File Permissions**:
+  ```bash
+  chmod 700 ~/.airgapper
+  chmod 600 ~/.airgapper/config.json
+  ```
+
+- [ ] **Remove --no-auth**: Ensure no `--no-auth` flags in production configs
+
+### 5. Running the Security Check
+
+```bash
+./scripts/check-security.sh
+```
+
+This script verifies:
+- htpasswd file exists with correct permissions
+- TLS certificates exist and are not expired
+- No insecure flags in docker-compose
+- Config file has secure permissions
+- Ports are bound to localhost
+
+## Security Features Summary
+
+### Backend Security
+
+| Feature | Description |
+|---------|-------------|
+| API Authentication | X-API-Key header with timing-safe comparison |
+| Rate Limiting | Per-IP token bucket (10 req/s, burst 20) |
+| File Locking | Prevents race conditions on config/request files |
+| Path Traversal Prevention | Validates all file paths stay within allowed directories |
+| Password Handling | Restic passwords passed via stdin (not env vars) |
+| Config Encryption | AES-256-GCM with Argon2id key derivation |
+| Error Sanitization | Sensitive data removed from client-facing errors |
+| GF(256) Zero Check | Prevents undefined behavior in SSS operations |
+| UUID Request IDs | 128-bit cryptographically random request identifiers |
+
+### Frontend Security
+
+| Feature | Description |
+|---------|-------------|
+| Session Storage | Keys stored in sessionStorage (not localStorage) |
+| Session Timeout | 30-minute inactivity timeout |
+| Input Validation | Client-side validation for all inputs |
+| CSRF Protection | Token-based CSRF prevention |
+| Security Headers | CSP, X-Frame-Options, X-Content-Type-Options |
+| React DevTools Disabled | Prevents state inspection in production |
+| HTTPS in Production | Same-origin API calls ensure HTTPS |
+
+### Docker/Deployment Security
+
+| Feature | Description |
+|---------|-------------|
+| Internal Networks | Service-to-service traffic isolated |
+| Localhost Binding | Services not exposed externally by default |
+| Nginx Hardening | Modern TLS config, rate limiting, security headers |
+| Production Config | Separate docker-compose for production |
+
+## Incident Response
+
+### Compromised API Key
+
+1. Generate new API key immediately
+2. Update configuration
+3. Restart services
+4. Audit recent API calls
+
+### Compromised TLS Certificate
+
+1. Revoke certificate with CA
+2. Generate new certificate
+3. Update configuration
+4. Restart all services
+
+### Suspected Breach
+
+1. Stop services immediately
+2. Preserve logs for analysis
+3. Rotate all credentials
+4. Review audit trail in consent requests
+5. Re-initialize with new key shares if necessary
+
+## Reporting Security Issues
+
+Please report security vulnerabilities responsibly. Contact the maintainers directly rather than opening a public issue.

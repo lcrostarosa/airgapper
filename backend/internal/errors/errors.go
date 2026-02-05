@@ -50,3 +50,15 @@ var (
 	// ErrInvalidRole is returned when an operation is attempted with an invalid role.
 	ErrInvalidRole = errors.New("invalid role for this operation")
 )
+
+// Encryption errors
+var (
+	// ErrNoEncryptionPassphrase is returned when encryption/decryption is attempted without a passphrase.
+	ErrNoEncryptionPassphrase = errors.New("encryption passphrase not set")
+
+	// ErrConfigEncrypted is returned when trying to load an encrypted config without a passphrase.
+	ErrConfigEncrypted = errors.New("config is encrypted; passphrase required")
+
+	// ErrDecryptionFailed is returned when decryption fails (wrong passphrase or corrupted data).
+	ErrDecryptionFailed = errors.New("decryption failed: invalid passphrase or corrupted data")
+)

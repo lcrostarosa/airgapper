@@ -2,14 +2,14 @@
 package consent
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"time"
 
+	"github.com/google/uuid"
 	apperrors "github.com/lcrostarosa/airgapper/backend/internal/errors"
+	"github.com/lcrostarosa/airgapper/backend/internal/filelock"
 	"github.com/lcrostarosa/airgapper/backend/internal/logging"
 )
 
@@ -96,14 +96,8 @@ func NewManager(dataDir string) *Manager {
 
 // CreateRequest creates a new restore request
 func (m *Manager) CreateRequest(requester, snapshotID, reason string, paths []string) (*RestoreRequest, error) {
-	// Generate unique ID
-	idBytes := make([]byte, 8)
-	if _, err := rand.Read(idBytes); err != nil {
-		return nil, err
-	}
-
 	req := &RestoreRequest{
-		ID:         hex.EncodeToString(idBytes),
+		ID:         uuid.New().String(),
 		Requester:  requester,
 		SnapshotID: snapshotID,
 		Paths:      paths,
@@ -123,6 +117,14 @@ func (m *Manager) CreateRequest(requester, snapshotID, reason string, paths []st
 // GetRequest retrieves a request by ID
 func (m *Manager) GetRequest(id string) (*RestoreRequest, error) {
 	path := filepath.Join(m.dataDir, id+".json")
+
+	// Use file locking to prevent race conditions
+	lock := filelock.New(path)
+	if err := lock.Lock(); err != nil {
+		return nil, err
+	}
+	defer lock.Unlock()
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -139,7 +141,7 @@ func (m *Manager) GetRequest(id string) (*RestoreRequest, error) {
 	// Check expiry
 	if req.Status == StatusPending && time.Now().After(req.ExpiresAt) {
 		req.Status = StatusExpired
-		if err := m.saveRequest(&req); err != nil {
+		if err := m.saveRequestLocked(&req); err != nil {
 			logging.Warn("Failed to save expired request", logging.Err(err))
 		}
 	}
@@ -226,6 +228,20 @@ func (m *Manager) Deny(id, denier string) error {
 }
 
 func (m *Manager) saveRequest(req *RestoreRequest) error {
+	path := filepath.Join(m.dataDir, req.ID+".json")
+
+	// Use file locking to prevent race conditions
+	lock := filelock.New(path)
+	if err := lock.Lock(); err != nil {
+		return err
+	}
+	defer lock.Unlock()
+
+	return m.saveRequestLocked(req)
+}
+
+// saveRequestLocked saves a request without acquiring a lock (caller must hold lock)
+func (m *Manager) saveRequestLocked(req *RestoreRequest) error {
 	if err := os.MkdirAll(m.dataDir, 0700); err != nil {
 		return err
 	}
@@ -241,14 +257,8 @@ func (m *Manager) saveRequest(req *RestoreRequest) error {
 
 // CreateRequestWithConsensus creates a new restore request with consensus requirements
 func (m *Manager) CreateRequestWithConsensus(requester, snapshotID, reason string, paths []string, requiredApprovals int) (*RestoreRequest, error) {
-	// Generate unique ID
-	idBytes := make([]byte, 8)
-	if _, err := rand.Read(idBytes); err != nil {
-		return nil, err
-	}
-
 	req := &RestoreRequest{
-		ID:                hex.EncodeToString(idBytes),
+		ID:                uuid.New().String(),
 		Requester:         requester,
 		SnapshotID:        snapshotID,
 		Paths:             paths,
@@ -338,13 +348,8 @@ func (m *Manager) GetApprovalProgress(id string) (current int, required int, err
 // CreateDeletionRequest creates a new deletion request
 // Deletion requests have a longer expiry (7 days) than restore requests
 func (m *Manager) CreateDeletionRequest(requester string, deletionType DeletionType, snapshotIDs, paths []string, reason string, requiredApprovals int) (*DeletionRequest, error) {
-	idBytes := make([]byte, 8)
-	if _, err := rand.Read(idBytes); err != nil {
-		return nil, err
-	}
-
 	req := &DeletionRequest{
-		ID:                hex.EncodeToString(idBytes),
+		ID:                uuid.New().String(),
 		Requester:         requester,
 		DeletionType:      deletionType,
 		SnapshotIDs:       snapshotIDs,

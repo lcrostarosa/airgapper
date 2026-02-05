@@ -1,0 +1,114 @@
+# Airgapper Production Stack
+# Security-hardened configuration for production deployments
+#
+# Prerequisites:
+# 1. Generate htpasswd file: htpasswd -Bc .htpasswd <username>
+# 2. Generate TLS certificates (or use Let's Encrypt)
+# 3. Generate API key: openssl rand -hex 32
+# 4. Run: docker-compose -f docker-compose.production.yml up -d
+
+services:
+  # Restic REST Server with authentication and TLS
+  storage:
+    image: restic/rest-server:latest
+    container_name: airgapper-storage
+    command:
+      - "--append-only"
+      - "--htpasswd-file=/auth/.htpasswd"
+      - "--tls"
+      - "--tls-cert=/certs/server.crt"
+      - "--tls-key=/certs/server.key"
+    volumes:
+      - restic-data:/data
+      - ./certs:/certs:ro
+      - ./auth:/auth:ro
+    ports:
+      # Bind to localhost only - use reverse proxy for external access
+      - "127.0.0.1:8000:8000"
+    networks:
+      - airgapper-internal
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "https://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Backend API Server
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: airgapper-backend
+    volumes:
+      - backend-config:/home/airgapper/.airgapper
+      - ./certs:/certs:ro
+    ports:
+      # Bind to localhost only
+      - "127.0.0.1:8081:8081"
+    environment:
+      - AIRGAPPER_NAME=airgapper
+      - AIRGAPPER_PORT=8081
+      # API key should be set via secrets or environment
+      # - AIRGAPPER_API_KEY=<generated-api-key>
+    depends_on:
+      storage:
+        condition: service_healthy
+    command:
+      - "serve"
+      - "--tls-cert=/certs/server.crt"
+      - "--tls-key=/certs/server.key"
+    networks:
+      - airgapper-internal
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "--no-check-certificate", "https://localhost:8081/airgapper.v1.HealthService/Check"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Nginx reverse proxy with TLS termination
+  # Use this for external access instead of exposing backend directly
+  nginx:
+    image: nginx:alpine
+    container_name: airgapper-nginx
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+      - ../frontend/dist:/usr/share/nginx/html:ro
+    ports:
+      # HTTPS only - no HTTP redirect in production
+      - "443:443"
+    depends_on:
+      - backend
+    networks:
+      - airgapper-internal
+      - airgapper-external
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "--no-check-certificate", "https://localhost:443/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  # Internal network for service-to-service communication
+  airgapper-internal:
+    internal: true
+
+  # External network for nginx only
+  airgapper-external:
+    driver: bridge
+
+volumes:
+  restic-data:
+    driver: local
+  backend-config:
+    driver: local
+
+# Secrets (recommended for production)
+# secrets:
+#   api_key:
+#     file: ./secrets/api_key.txt
+#   htpasswd:
+#     file: ./secrets/htpasswd
